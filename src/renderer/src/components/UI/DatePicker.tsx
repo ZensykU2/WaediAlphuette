@@ -52,7 +52,7 @@ export function DatePicker({ value, onChange, label, className }: DatePickerProp
         <DropdownMenuPrimitive.Portal>
           <DropdownMenuPrimitive.Content
             align="start"
-            className="z-50 animate-fade-in"
+            className="z-[1001] animate-fade-in"
             sideOffset={4}
           >
             <Calendar
