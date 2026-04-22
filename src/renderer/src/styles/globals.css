@@ -1,0 +1,158 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 75 14% 9%;
+    --foreground: 45 18% 92%;
+    --card: 80 12% 14%;
+    --card-foreground: 45 18% 92%;
+    --popover: 80 12% 12%;
+    --popover-foreground: 45 18% 92%;
+    --primary: 38 62% 56%;
+    --primary-foreground: 75 14% 9%;
+    --secondary: 85 18% 35%;
+    --secondary-foreground: 45 18% 92%;
+    --muted: 80 10% 18%;
+    --muted-foreground: 40 12% 60%;
+    --accent: 85 22% 42%;
+    --accent-foreground: 45 18% 92%;
+    --destructive: 0 70% 45%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 80 8% 22%;
+    --input: 80 8% 16%;
+    --ring: 38 62% 56%;
+    --radius: 0.5rem;
+  }
+
+  * {
+    @apply border-border;
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-app-region: no-drag;
+  }
+
+  body {
+    @apply bg-forest-900 text-foreground;
+    font-family: 'Inter', system-ui, sans-serif;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  /* Scrollbars */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground)); }
+
+  /* Selection */
+  ::selection { background: hsl(38 62% 56% / 0.3); }
+
+  /* Allow text selection in inputs/tables */
+  input, textarea, [data-selectable] { user-select: text; }
+
+  /* Chrome, Safari, Edge, Opera - Hide number input arrows */
+  input::-webkit-outer-spin-button,
+  input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  /* Firefox - Hide number input arrows */
+  input[type=number] {
+    -moz-appearance: textfield;
+  }
+}
+
+@layer utilities {
+  /* Prevent shifting when text becomes bold/medium */
+  .tab-anti-shift {
+    @apply inline-flex flex-col items-center justify-center;
+  }
+  .tab-anti-shift::after {
+    content: attr(data-text);
+    @apply h-0 font-bold invisible overflow-hidden select-none pointer-events-none;
+  }
+  
+  .animate-fade-in {
+    animation: fadeIn 0.3s ease-out forwards;
+  }
+}
+
+@layer components {
+  /* Alpine card with subtle wood-grain texture */
+  .alpine-card {
+    @apply bg-forest-800 border border-border rounded-lg;
+    background-image: var(--tw-gradient-to, none),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+  }
+
+  /* Verein / Privat badge base */
+  .badge-verein { @apply bg-blue-900/50 text-blue-300 border border-blue-700/50; }
+  .badge-privat { @apply bg-orange-900/50 text-orange-300 border border-orange-700/50; }
+
+  /* Stat metric number */
+  .metric-value {
+    @apply font-display text-2xl font-semibold tabular-nums;
+  }
+
+  /* Page title */
+  .page-title {
+    @apply font-display text-3xl font-bold text-foreground tracking-tight;
+  }
+
+  /* Gradient text for the logo/brand */
+  .brand-gradient {
+    background: linear-gradient(135deg, #d4a24a 0%, #e8c47a 50%, #8ea86b 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Shimmer loading state */
+  .shimmer {
+    @apply bg-forest-800 relative overflow-hidden rounded-md;
+  }
+  .shimmer::after {
+    content: "";
+    @apply absolute inset-0 -translate-x-full;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      hsl(var(--muted) / 0.1) 20%,
+      hsl(var(--muted) / 0.2) 50%,
+      hsl(var(--muted) / 0.1) 80%,
+      transparent 100%
+    );
+    animation: shimmer 1.5s infinite;
+  }
+
+  @keyframes shimmer {
+    100% { transform: translateX(100%); }
+  }
+
+  .content-fade-in {
+    animation: contentFadeIn 0.25s ease-out forwards;
+  }
+
+  @keyframes contentFadeIn {
+    from { opacity: 0; transform: translateY(2px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Standard Buttons */
+  .btn-primary {
+    @apply flex items-center justify-center gap-2 px-4 py-2 rounded-md bg-alpine-400 text-alpine-900 font-bold shadow-sm transition-all hover:bg-alpine-500 disabled:opacity-50 active:scale-95;
+  }
+  .btn-secondary {
+    @apply flex items-center justify-center gap-2 px-4 py-2 rounded-md bg-forest-700 text-foreground font-medium border border-border transition-all hover:bg-forest-600 active:scale-95;
+  }
+  .btn-danger {
+    @apply flex items-center justify-center gap-2 px-4 py-2 rounded-md bg-red-900/40 text-red-100 border border-red-800/50 transition-all hover:bg-red-800/60 active:scale-95 text-sm;
+  }
+}
