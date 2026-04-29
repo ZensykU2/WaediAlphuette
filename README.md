@@ -14,7 +14,7 @@ The crown jewel of the application. A specialized inventory and financial tracki
 ### Comprehensive Financial Tracking
 Eine moderne Desktop-Anwendung zur effizienten Verwaltung der Finanzen, Budgets und Getränkebestände für die Wädi Alphütte (Gruohubel). Entwickelt mit Electron, React und SQLite.
 
-## 📖 Dokumentation
+## Dokumentation
 - [**Bedienungsanleitung (User Guide)**](BEDIENUNGSANLEITUNG.md) — Hilfe für Endbenutzer.
 - [**Technische Dokumentation**](DOKUMENTATION.md) — Architektur, DB-Schema und Logik.
 
