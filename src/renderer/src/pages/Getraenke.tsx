@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { 
   FileSpreadsheet, Save, Loader2, Database, Pencil, Trash2, 
-  CheckCircle2, AlertTriangle, Calendar 
+  CheckCircle2, AlertTriangle, Calendar, CalendarRange 
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useActiveSaison } from '../store/saisonStore'
@@ -73,17 +73,52 @@ function SettlementTab({ rows, setRows, saisonId, onRefresh }: any) {
   const [booking, setBooking] = useState(false)
   const [bookingStatus, setBookingStatus] = useState<any>(null)
   const [modal, setModal] = useState<{ open: boolean; type: 'book' | 'unbook' }>({ open: false, type: 'book' })
+  const [weekModalOpen, setWeekModalOpen] = useState(false)
+  const [weekList, setWeekList] = useState<any[]>([])
+  const [selectedWeek, setSelectedWeek] = useState<string>('')
+  const [weekExporting, setWeekExporting] = useState(false)
 
   useEffect(() => {
     if (saisonId) {
       window.api.getGetraenkeBookingStatus(saisonId).then(setBookingStatus)
+      window.api.getWeekSnapshotList(saisonId).then(list => {
+        setWeekList(list)
+        if (list.length > 0 && !selectedWeek) setSelectedWeek(list[0].woche_montag)
+      })
     }
+  }, [saisonId])
+
+  // Toast when the app auto-creates a weekly snapshot
+  useEffect(() => {
+    const unsub = window.api.onSnapshotCreated(({ typ, woche }) => {
+      const label = typ === 'start' ? 'Wochenanfang' : 'Wochenabschluss'
+      toast.success(`${label} gespeichert`, { description: `Snapshot für Woche ab ${woche} erstellt.` })
+      window.api.getWeekSnapshotList(saisonId).then(setWeekList)
+    })
+    return unsub
   }, [saisonId])
 
   const handleUpdate = (index: number, field: string, value: number) => {
     const next = [...rows]
-    next[index] = { ...next[index], [field]: value }
+    next[index] = { ...next[index], [field]: Math.max(0, value) }
     setRows(next)
+  }
+
+  const exportWeekExcel = async () => {
+    if (!saisonId || !selectedWeek) return
+    const monday = new Date(selectedWeek + 'T00:00:00')
+    const sunday = new Date(monday)
+    sunday.setDate(monday.getDate() + 6)
+    const sunStr = sunday.toISOString().split('T')[0]
+    const path = await window.api.saveFileDialog(`Wochenbericht_${selectedWeek}_${sunStr}.xlsx`)
+    if (!path) return
+    setWeekExporting(true)
+    try {
+      await window.api.exportWeekGetraenkeExcel(saisonId, path, selectedWeek)
+      toast.success('Wochenbericht exportiert')
+      setWeekModalOpen(false)
+    } catch { toast.error('Fehler beim Export') }
+    finally { setWeekExporting(false) }
   }
 
   const save = async () => {
@@ -172,6 +207,13 @@ function SettlementTab({ rows, setRows, saisonId, onRefresh }: any) {
           Tagesbericht
         </button>
         <button 
+          onClick={() => setWeekModalOpen(true)} 
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-forest-700 hover:bg-forest-600 text-foreground text-xs transition-colors"
+        >
+          <CalendarRange className="w-3.5 h-3.5" />
+          Wochenbericht
+        </button>
+        <button 
           onClick={save} 
           disabled={saving} 
           className="flex items-center gap-2 px-4 py-1.5 rounded-lg bg-alpine-400 hover:bg-alpine-500 text-forest-900 font-medium text-xs transition-colors disabled:opacity-50"
@@ -187,9 +229,9 @@ function SettlementTab({ rows, setRows, saisonId, onRefresh }: any) {
             <tr className="border-b border-border bg-forest-900/50 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
               <th className="p-3 w-48">Produkt</th>
               <th className="p-2 text-center text-[9px]">Anfangsbestand</th>
-              <th className="p-2 text-center text-[9px]">Lieferungen</th>
-              <th className="p-2 text-center border-r border-border/30 text-[9px]">Verkauf (Gäste)</th>
-              <th className="p-2 text-center">Eigen</th>
+              <th className="p-2 text-center text-[9px] text-sky-400">Lieferungen</th>
+              <th className="p-2 text-center border-r border-border/30 text-[9px] text-emerald-400">Verkauf (Gäste)</th>
+              <th className="p-2 text-center text-[9px]">Eigen</th>
               <th className="p-2 text-center border-r border-border/30 text-[9px]">Helfer (Staff)</th>
               <th className="p-2 text-center bg-forest-700/20 text-emerald-400">Inventar Aktuell</th>
               <th className="p-2 text-center bg-forest-800/40">Total Verb.</th>
@@ -215,41 +257,54 @@ function SettlementTab({ rows, setRows, saisonId, onRefresh }: any) {
                     </div>
                     <div className="text-[10px] text-muted-foreground">{row.groesse}</div>
                   </td>
-                  <td className="p-1">
+                  <td className="p-1 text-center">
                     <input 
-                      type="number" value={row.bestand_antritt || ''} 
+                      type="number" min="0" value={row.bestand_antritt || ''} 
                       onChange={e => handleUpdate(i, 'bestand_antritt', parseInt(e.target.value) || 0)}
                       className="w-14 bg-transparent border border-border/40 hover:border-alpine-400/50 focus:border-alpine-400 focus:ring-1 focus:ring-alpine-400 rounded p-1 text-center transition-all outline-none"
                     />
                   </td>
-                  <td className="p-1">
+                  <td className="p-1 text-center">
                     <input 
-                      type="number" value={row.lieferungen || ''} 
+                      type="number" min="0" value={row.lieferungen || ''} 
                       onChange={e => handleUpdate(i, 'lieferungen', parseInt(e.target.value) || 0)}
-                      className="w-14 bg-transparent border border-border/40 hover:border-alpine-400/50 focus:border-alpine-400 focus:ring-1 focus:ring-alpine-400 rounded p-1 text-center transition-all outline-none"
+                      className="w-14 bg-sky-900/20 text-sky-300 border border-sky-500/30 hover:border-sky-400 focus:border-sky-400 focus:ring-1 focus:ring-sky-400 rounded p-1 text-center transition-all outline-none"
                     />
                   </td>
-                  <td className="p-1 border-r border-border/30">
+                  <td className="p-1 border-r border-border/30 text-center">
                     <input 
-                      type="number" value={row.verbrauch_gast || ''} 
+                      type="number" min="0" value={row.verbrauch_gast || ''} 
                       onChange={e => handleUpdate(i, 'verbrauch_gast', parseInt(e.target.value) || 0)}
                       className="w-14 bg-emerald-900/20 text-emerald-300 border border-emerald-500/30 hover:border-emerald-400 focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400 rounded p-1 text-center transition-all outline-none font-bold"
                     />
                   </td>
                   <td className="p-1 text-center">
                     <input 
-                      type="number" value={row.eigenkonsum || ''} onChange={e => handleUpdate(i, 'eigenkonsum', parseInt(e.target.value) || 0)}
+                      type="number" min="0" value={row.eigenkonsum || ''} onChange={e => handleUpdate(i, 'eigenkonsum', parseInt(e.target.value) || 0)}
                       className="w-12 bg-transparent border border-border/40 hover:border-alpine-400/50 focus:border-alpine-400 focus:ring-1 focus:ring-alpine-400 rounded p-1 text-center transition-all outline-none"
                     />
                   </td>
                   <td className="p-1 border-r border-border/30 text-center">
                     <input 
-                      type="number" value={row.helfer_konsum || ''} onChange={e => handleUpdate(i, 'helfer_konsum', parseInt(e.target.value) || 0)}
+                      type="number" min="0" value={row.helfer_konsum || ''} onChange={e => handleUpdate(i, 'helfer_konsum', parseInt(e.target.value) || 0)}
                       className="w-12 bg-transparent border border-border/40 hover:border-alpine-400/50 focus:border-alpine-400 focus:ring-1 focus:ring-alpine-400 rounded p-1 text-center transition-all outline-none"
                     />
                   </td>
-                  <td className="p-2 text-center font-bold bg-forest-700/10">
-                    <span className={isLow ? "text-amber-400" : "text-stone-300"}>{calcs.bestand_abgabe_calc}</span>
+                  <td className="p-1 text-center bg-forest-700/10">
+                    <input 
+                      type="number" min="0"
+                      value={calcs.bestand_abgabe_calc}
+                      onChange={e => {
+                        const inventar = Math.max(0, parseInt(e.target.value) || 0)
+                        const antritt = row.bestand_antritt || 0
+                        const lief = row.lieferungen || 0
+                        const eigen = row.eigenkonsum || 0
+                        const helfer = row.helfer_konsum || 0
+                        // Back-calculate guest sales from the typed inventory count
+                        handleUpdate(i, 'verbrauch_gast', Math.max(0, (antritt + lief) - inventar - eigen - helfer))
+                      }}
+                      className="w-16 bg-forest-900/50 border border-alpine-400/30 hover:border-alpine-400/60 focus:border-alpine-400 focus:ring-1 focus:ring-alpine-400 rounded p-1 text-center transition-all outline-none font-bold text-emerald-400"
+                    />
                   </td>
                   <td className="p-2 text-center bg-forest-700/20 text-muted-foreground">{calcs.verbrauch_total}</td>
                   <td className="p-2 text-center font-bold bg-forest-700/40 text-alpine-400">{calcs.abrechnungsbetrag.toFixed(2)}</td>
@@ -320,8 +375,64 @@ function SettlementTab({ rows, setRows, saisonId, onRefresh }: any) {
         }
         loading={booking}
       />
+
+      <Modal open={weekModalOpen} onClose={() => setWeekModalOpen(false)} title="Wochenbericht Exportieren">
+        <div className="space-y-4 p-1">
+          <p className="text-sm text-muted-foreground">
+            Wählen Sie eine abgeschlossene Woche aus, um den Bericht zu exportieren. 
+            Ein Wochenbericht vergleicht den Snapshot vom Montagmorgen mit dem Snapshot vom Sonntagabend.
+          </p>
+          
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Woche Auswählen</label>
+            {weekList.length === 0 ? (
+              <div className="p-4 bg-forest-900/50 rounded-lg border border-dashed border-border text-center text-sm text-muted-foreground">
+                Keine Snapshots gefunden.
+              </div>
+            ) : (
+              <select 
+                value={selectedWeek} 
+                onChange={e => setSelectedWeek(e.target.value)}
+                className="w-full bg-forest-900 border border-border/40 rounded-md px-3 py-2 text-sm focus:ring-1 focus:ring-alpine-400 outline-none"
+              >
+                {weekList.map((w: any) => (
+                  <option key={w.woche_montag} value={w.woche_montag}>
+                    KW {getKW(w.woche_montag)} (Ab {formatDate(w.woche_montag)}) {(!w.has_start || !w.has_ende) ? '— Unvollständig' : ''}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          <div className="flex gap-3 mt-6">
+            <button 
+              onClick={() => setWeekModalOpen(false)}
+              className="btn-secondary flex-1"
+            >
+              Abbrechen
+            </button>
+            <button 
+              onClick={exportWeekExcel}
+              disabled={!selectedWeek || weekExporting}
+              className="btn-primary flex-1 flex items-center justify-center gap-2"
+            >
+              {weekExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" />}
+              Exportieren
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
+}
+
+function getKW(dateStr: string) {
+  const date = new Date(dateStr)
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+  const dayNum = d.getUTCDay() || 7
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum)
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
+  return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7)
 }
 
 function StammdatenTab({ data, onRefresh }: any) {
@@ -379,7 +490,7 @@ function StammdatenTab({ data, onRefresh }: any) {
               <div>
                 <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">VP (Gäste)</label>
                 <input 
-                  type="number" step="0.01" required
+                  type="number" step="0.01" required min="0"
                   value={form.verkaufspreis || ''} 
                   onChange={e => setForm({...form, verkaufspreis: parseFloat(e.target.value) || 0})}
                   className="w-full bg-forest-900 border border-border/40 rounded-md px-3 py-2 text-sm mt-1 focus:ring-1 focus:ring-alpine-400 focus:outline-none" 
@@ -388,7 +499,7 @@ function StammdatenTab({ data, onRefresh }: any) {
               <div>
                 <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">EK (Eigen)</label>
                 <input 
-                  type="number" step="0.01" required
+                  type="number" step="0.01" required min="0"
                   value={form.ek_preis || ''} 
                   onChange={e => setForm({...form, ek_preis: parseFloat(e.target.value) || 0})}
                   className="w-full bg-forest-900 border border-border/40 rounded-md px-3 py-2 text-sm mt-1 focus:ring-1 focus:ring-alpine-400 focus:outline-none" 
@@ -399,7 +510,7 @@ function StammdatenTab({ data, onRefresh }: any) {
                 <div>
                   <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Helfer-EK</label>
                   <input 
-                    type="number" step="0.01" required
+                    type="number" step="0.01" required min="0"
                     value={form.gast_preis || ''} 
                     onChange={e => setForm({...form, gast_preis: parseFloat(e.target.value) || 0})}
                     className="w-full bg-forest-900 border border-border/40 rounded-md px-3 py-2 text-sm mt-1 focus:ring-1 focus:ring-alpine-400 focus:outline-none" 
@@ -408,7 +519,7 @@ function StammdatenTab({ data, onRefresh }: any) {
                 <div>
                   <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Mindestbest.</label>
                   <input 
-                    type="number" required
+                    type="number" required min="0"
                     value={form.min_bestand || 0} 
                     onChange={e => setForm({...form, min_bestand: parseInt(e.target.value) || 0})}
                     className="w-full bg-forest-900 border border-border/40 rounded-md px-3 py-2 text-sm mt-1 focus:ring-1 focus:ring-alpine-400 focus:outline-none" 

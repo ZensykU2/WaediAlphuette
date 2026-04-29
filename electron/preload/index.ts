@@ -56,6 +56,14 @@ const api = {
   unbookGetraenkeRevenue: (saisonId: number) =>
     ipcRenderer.invoke('getraenke:unbookRevenue', saisonId),
 
+  // ── Wochen-Snapshots ──────────────────────────────────────
+  getWeekSnapshotList: (saisonId: number) =>
+    ipcRenderer.invoke('getraenke:getWeekSnapshotList', saisonId),
+  getWeekSnapshot: (saisonId: number, wocheMontag: string, typ: 'start' | 'ende') =>
+    ipcRenderer.invoke('getraenke:getWeekSnapshot', saisonId, wocheMontag, typ),
+  exportWeekGetraenkeExcel: (saisonId: number, filePath: string, wocheMontag: string) =>
+    ipcRenderer.invoke('getraenke:exportWeekExcel', saisonId, filePath, wocheMontag),
+
   // ── Dialogs ───────────────────────────────────────────────
   openFileDialog: () => ipcRenderer.invoke('dialog:openFile'),
   saveFileDialog: (defaultName: string) => ipcRenderer.invoke('dialog:saveFile', defaultName),
@@ -63,7 +71,24 @@ const api = {
   // ── Window Controls ───────────────────────────────────────
   minimize: () => ipcRenderer.send('window-minimize'),
   maximize: () => ipcRenderer.send('window-maximize'),
-  close: () => ipcRenderer.send('window-close')
+  close: () => ipcRenderer.send('window-close'),
+
+  // Returns current maximized state (one-time query)
+  isMaximized: (): Promise<boolean> => ipcRenderer.invoke('window:isMaximized'),
+
+  // Subscribe to maximize/unmaximize events. Returns an unsubscribe function.
+  onMaximizeChange: (cb: (isMaximized: boolean) => void): (() => void) => {
+    const listener = (_: Electron.IpcRendererEvent, val: boolean) => cb(val)
+    ipcRenderer.on('window:maximizeChange', listener)
+    return () => ipcRenderer.removeListener('window:maximizeChange', listener)
+  },
+
+  // Subscribe to auto-snapshot creation events. Returns an unsubscribe function.
+  onSnapshotCreated: (cb: (data: { typ: string; woche: string }) => void): (() => void) => {
+    const listener = (_: Electron.IpcRendererEvent, data: { typ: string; woche: string }) => cb(data)
+    ipcRenderer.on('getraenke:snapshotCreated', listener)
+    return () => ipcRenderer.removeListener('getraenke:snapshotCreated', listener)
+  }
 }
 
 if (process.contextIsolated) {

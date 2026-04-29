@@ -209,6 +209,77 @@ export async function exportDrinksExcel(saisonId: number, filePath: string, date
   await workbook.xlsx.writeFile(filePath)
 }
 
+export async function exportDrinksWeekExcel(saisonId: number, filePath: string, wocheMontag: string): Promise<void> {
+  const { getWeekSnapshot, getGetraenkeAbrechnung } = await import('../db/database')
+  
+  const startSnapshot = getWeekSnapshot(saisonId, wocheMontag, 'start') as any[]
+  let endSnapshot = getWeekSnapshot(saisonId, wocheMontag, 'ende') as any[]
+  
+  // If no end snapshot exists yet (e.g. week not finished), use current values
+  if (endSnapshot.length === 0) {
+    endSnapshot = getGetraenkeAbrechnung(saisonId) as any[]
+  }
+
+  const workbook = new ExcelJS.Workbook()
+  const sheet = workbook.addWorksheet(`KW ${wocheMontag}`)
+
+  // Title
+  sheet.mergeCells('A1:I1')
+  const title = sheet.getCell('A1')
+  title.value = `Wochenbericht Getränke — Woche ab ${wocheMontag}`
+  title.font = { size: 16, bold: true, color: { argb: 'FFD4A24A' } }
+  title.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1A1C14' } }
+  title.alignment = { horizontal: 'center' }
+
+  // Headers
+  const headers = [
+    'Produkt', 'Gebinde', 
+    'Anfang (Mo)', 'Ende (So/Aktuell)', 'Delta (Woche)', 
+    'Verkauf Gäste (Delta)', 'Eigen (Delta)', 'Helfer (Delta)', 'Umsatz Woche (CHF)'
+  ]
+  sheet.addRow(headers)
+  const headerRow = sheet.getRow(2)
+  headerRow.font = { bold: true }
+  headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F0F0' } }
+
+  // Data
+  startSnapshot.forEach(start => {
+    const end = endSnapshot.find(e => e.getraenk_id === start.getraenk_id) || start
+    
+    // Deltas: usually we care about the change in recorded consumption/deliveries
+    // or the change in inventory.
+    // If we want "What happened this week", we look at the difference in recorded totals.
+    const deltaGast = (end.verbrauch_gast || 0) - (start.verbrauch_gast || 0)
+    const deltaEigen = (end.eigenkonsum || 0) - (start.eigenkonsum || 0)
+    const deltaHelfer = (end.helfer_konsum || 0) - (start.helfer_konsum || 0)
+    const deltaLief = (end.lieferungen || 0) - (start.lieferungen || 0)
+    
+    const verbrauchTotalWoche = deltaGast + deltaEigen + deltaHelfer
+    const umsatzWoche = (deltaGast * start.verkaufspreis) + (deltaEigen * start.ek_preis)
+
+    sheet.addRow([
+      start.name,
+      start.groesse,
+      (start.bestand_antritt + start.lieferungen - (start.verbrauch_gast + start.eigenkonsum + start.helfer_konsum)), // Physical start of week
+      (end.bestand_antritt + end.lieferungen - (end.verbrauch_gast + end.eigenkonsum + end.helfer_konsum)), // Physical end of week
+      verbrauchTotalWoche,
+      deltaGast,
+      deltaEigen,
+      deltaHelfer,
+      umsatzWoche.toFixed(2)
+    ])
+  })
+
+  // Total
+  const lastRowNum = sheet.lastRow!.number
+  const footerRow = sheet.addRow(['TOTAL', '', '', '', '', '', '', '', { formula: `SUM(I3:I${lastRowNum})` }])
+  footerRow.font = { bold: true }
+  footerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F5E9' } }
+
+  autoFit(sheet)
+  await workbook.xlsx.writeFile(filePath)
+}
+
 function styleHeader(sheet: ExcelJS.Worksheet, headers: string[], colors: [string, string]) {
   sheet.addRow(headers)
   const headerRow = sheet.getRow(1)

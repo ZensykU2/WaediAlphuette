@@ -107,6 +107,26 @@ export interface GetraenkeAbrechnung extends Getraenk {
   min_bestand: number
 }
 
+export interface GetraenkeWochenSnapshot {
+  getraenk_id: number
+  name: string
+  groesse?: string
+  verkaufspreis: number
+  ek_preis: number
+  gast_preis: number
+  bestand_antritt: number
+  lieferungen: number
+  verbrauch_gast: number
+  eigenkonsum: number
+  helfer_konsum: number
+}
+
+export interface WochenSnapshotMeta {
+  woche_montag: string
+  has_start: 0 | 1
+  has_ende: 0 | 1
+}
+
 export interface WaediApi {
   getSaisons: () => Promise<Saison[]>
   createSaison: (data: Partial<Saison>) => Promise<Saison>
@@ -137,6 +157,10 @@ export interface WaediApi {
   getGetraenkeBookingStatus: (saisonId: number) => Promise<any>
   bookGetraenkeRevenue: (saisonId: number, amount: number) => Promise<void>
   unbookGetraenkeRevenue: (saisonId: number) => Promise<void>
+  // Wochen-Snapshots
+  getWeekSnapshotList: (saisonId: number) => Promise<WochenSnapshotMeta[]>
+  getWeekSnapshot: (saisonId: number, wocheMontag: string, typ: 'start' | 'ende') => Promise<GetraenkeWochenSnapshot[]>
+  exportWeekGetraenkeExcel: (saisonId: number, filePath: string, wocheMontag: string) => Promise<void>
   // Utils
   importExcel: (filePath: string) => Promise<ImportResult>
   exportExcel: (saisonId: number, filePath: string, date?: string) => Promise<void>
@@ -146,4 +170,7 @@ export interface WaediApi {
   minimize: () => void
   maximize: () => void
   close: () => void
+  isMaximized: () => Promise<boolean>
+  onMaximizeChange: (cb: (isMaximized: boolean) => void) => (() => void)
+  onSnapshotCreated: (cb: (data: { typ: string; woche: string }) => void) => (() => void)
 }

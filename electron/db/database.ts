@@ -151,6 +151,23 @@ function runMigrations(): void {
     )
   `)
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS getraenke_wochen_snapshots (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      saison_id       INTEGER NOT NULL REFERENCES saisons(id) ON DELETE CASCADE,
+      getraenk_id     INTEGER NOT NULL REFERENCES getraenke_stammdaten(id) ON DELETE CASCADE,
+      woche_montag    TEXT    NOT NULL,
+      typ             TEXT    NOT NULL CHECK(typ IN ('start','ende')),
+      bestand_antritt INTEGER NOT NULL DEFAULT 0,
+      lieferungen     INTEGER NOT NULL DEFAULT 0,
+      verbrauch_gast  INTEGER NOT NULL DEFAULT 0,
+      eigenkonsum     INTEGER NOT NULL DEFAULT 0,
+      helfer_konsum   INTEGER NOT NULL DEFAULT 0,
+      erstellt_am     TEXT    NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(saison_id, getraenk_id, woche_montag, typ)
+    )
+  `)
+
   // One-time migrations for existing DBs
   try {
      db.run('ALTER TABLE getraenke_stammdaten ADD COLUMN min_bestand INTEGER DEFAULT 0')
@@ -580,5 +597,75 @@ export function unbookGetraenkeRevenue(saisonId: number) {
   run(
     "DELETE FROM einnahmen WHERE saison_id = ? AND notiz LIKE ?",
     [saisonId, notizPrefix + '%']
+  )
+}
+
+// ── Wochen-Snapshots ──────────────────────────────────────────────────────────
+
+/**
+ * Creates a snapshot of the current getraenke_abrechnung for the given week and type.
+ * Uses INSERT OR IGNORE so it is safe to call multiple times on the same day.
+ * Returns true if at least one row was newly inserted.
+ */
+export function createWeekSnapshot(
+  saisonId: number,
+  wocheMontag: string,
+  typ: 'start' | 'ende'
+): boolean {
+  const rows = all<any>(
+    `SELECT getraenk_id, bestand_antritt, lieferungen, verbrauch_gast, eigenkonsum, helfer_konsum
+     FROM getraenke_abrechnung WHERE saison_id = ?`,
+    [saisonId]
+  )
+  if (!rows.length) return false
+
+  let created = false
+  db.run('BEGIN')
+  try {
+    for (const row of rows) {
+      db.run(
+        `INSERT OR IGNORE INTO getraenke_wochen_snapshots
+          (saison_id, getraenk_id, woche_montag, typ,
+           bestand_antritt, lieferungen, verbrauch_gast, eigenkonsum, helfer_konsum)
+         VALUES (?,?,?,?,?,?,?,?,?)`,
+        [saisonId, row.getraenk_id, wocheMontag, typ,
+         row.bestand_antritt, row.lieferungen, row.verbrauch_gast, row.eigenkonsum, row.helfer_konsum]
+      )
+      const changes = db.exec('SELECT changes()')[0]?.values?.[0]?.[0]
+      if (Number(changes) > 0) created = true
+    }
+    db.run('COMMIT')
+    persist()
+  } catch (e) {
+    db.run('ROLLBACK')
+    return false
+  }
+  return created
+}
+
+/** Returns a list of all weeks that have at least one snapshot for this season. */
+export function getWeekSnapshotList(saisonId: number) {
+  return all(
+    `SELECT woche_montag,
+            MAX(CASE WHEN typ='start' THEN 1 ELSE 0 END) AS has_start,
+            MAX(CASE WHEN typ='ende'  THEN 1 ELSE 0 END) AS has_ende
+     FROM getraenke_wochen_snapshots
+     WHERE saison_id = ?
+     GROUP BY woche_montag
+     ORDER BY woche_montag DESC`,
+    [saisonId]
+  )
+}
+
+/** Returns all drink rows for a specific week snapshot (start or ende). */
+export function getWeekSnapshot(saisonId: number, wocheMontag: string, typ: 'start' | 'ende') {
+  return all(
+    `SELECT s.getraenk_id, g.name, g.groesse, g.verkaufspreis, g.ek_preis, g.gast_preis,
+            s.bestand_antritt, s.lieferungen, s.verbrauch_gast, s.eigenkonsum, s.helfer_konsum
+     FROM getraenke_wochen_snapshots s
+     JOIN getraenke_stammdaten g ON s.getraenk_id = g.id
+     WHERE s.saison_id = ? AND s.woche_montag = ? AND s.typ = ?
+     ORDER BY g.name ASC`,
+    [saisonId, wocheMontag, typ]
   )
 }

@@ -7,9 +7,10 @@ import {
   getTagesauswertung, getWochenauswertung, getGesamtauswertung,
   getGetraenkeStammdaten, saveGetraenkStammdat, deleteGetraenkStammdat,
   getGetraenkeAbrechnung, saveGetraenkeAbrechnung,
-  getGetraenkeBookingStatus, bookGetraenkeRevenue, unbookGetraenkeRevenue
+  getGetraenkeBookingStatus, bookGetraenkeRevenue, unbookGetraenkeRevenue,
+  getWeekSnapshotList, getWeekSnapshot
 } from '../db/database'
-import { importExcel, exportExcel, exportDrinksExcel } from '../excel/excel'
+import { importExcel, exportExcel, exportDrinksExcel, exportDrinksWeekExcel } from '../excel/excel'
 
 export function registerAllHandlers(): void {
   // ── Saisons ──────────────────────────────────────────────
@@ -59,6 +60,13 @@ export function registerAllHandlers(): void {
   ipcMain.handle('getraenke:getBookingStatus', (_, saisonId) => getGetraenkeBookingStatus(saisonId))
   ipcMain.handle('getraenke:bookRevenue',      (_, saisonId, amount) => bookGetraenkeRevenue(saisonId, amount))
   ipcMain.handle('getraenke:unbookRevenue',    (_, saisonId) => unbookGetraenkeRevenue(saisonId))
+
+  // ── Wochen-Snapshots ──────────────────────────────────────
+  ipcMain.handle('getraenke:getWeekSnapshotList', (_, saisonId) => getWeekSnapshotList(saisonId))
+  ipcMain.handle('getraenke:getWeekSnapshot',     (_, saisonId, wocheMontag, typ) => getWeekSnapshot(saisonId, wocheMontag, typ))
+  ipcMain.handle('getraenke:exportWeekExcel', async (_, saisonId: number, filePath: string, wocheMontag: string) => {
+    return await exportDrinksWeekExcel(saisonId, filePath, wocheMontag)
+  })
 
   // ── File Dialogs ──────────────────────────────────────────
   ipcMain.handle('dialog:openFile', async () => {
