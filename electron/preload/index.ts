@@ -88,7 +88,20 @@ const api = {
     const listener = (_: Electron.IpcRendererEvent, data: { typ: string; woche: string }) => cb(data)
     ipcRenderer.on('getraenke:snapshotCreated', listener)
     return () => ipcRenderer.removeListener('getraenke:snapshotCreated', listener)
-  }
+  },
+
+  // ── Auto-Updater ──────────────────────────────────────────
+  onUpdateAvailable: (cb: () => void): (() => void) => {
+    const listener = () => cb()
+    ipcRenderer.on('update-available', listener)
+    return () => ipcRenderer.removeListener('update-available', listener)
+  },
+  onUpdateDownloaded: (cb: () => void): (() => void) => {
+    const listener = () => cb()
+    ipcRenderer.on('update-downloaded', listener)
+    return () => ipcRenderer.removeListener('update-downloaded', listener)
+  },
+  installUpdate: () => ipcRenderer.send('install-update')
 }
 
 if (process.contextIsolated) {

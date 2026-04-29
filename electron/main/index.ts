@@ -4,6 +4,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerAllHandlers } from '../ipc/handlers'
 import { initDatabase } from '../db/database'
 import { getActiveSaison, createWeekSnapshot } from '../db/database'
+import { initUpdater } from './updater'
 
 // Pending snapshot notification to send once the renderer is ready
 let pendingSnapshot: { typ: string; woche: string } | null = null
@@ -63,6 +64,8 @@ function createWindow(): void {
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
+    // Initialize auto-updater
+    initUpdater(mainWindow)
   })
 
   // Send pending auto-snapshot notification once the page is loaded

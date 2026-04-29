@@ -2,6 +2,10 @@
   "name": "waedi-alphuette",
   "version": "1.0.0",
   "description": "Wädi Alphütte — Finanz- und Budgetverwaltung",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ZensykU2/WaediAlphuette"
+  },
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
@@ -11,7 +15,8 @@
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
     "postinstall": "electron-builder install-app-deps",
-    "dist:win": "npm run build && electron-builder --win"
+    "dist:win": "npm run build && electron-builder --win",
+    "release": "npm run build && electron-builder --win --publish always"
   },
   "keywords": [
     "alphuette",
@@ -57,6 +62,8 @@
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "date-fns": "^3.6.0",
+    "electron-log": "^5.4.3",
+    "electron-updater": "^6.8.3",
     "exceljs": "^4.4.0",
     "lucide-react": "^0.379.0",
     "react": "^18.3.1",
@@ -75,6 +82,13 @@
     "directories": {
       "output": "release"
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "ZensykU2",
+        "repo": "WaediAlphuette"
+      }
+    ],
     "files": [
       "out/**/*"
     ],

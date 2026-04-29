@@ -173,4 +173,8 @@ export interface WaediApi {
   isMaximized: () => Promise<boolean>
   onMaximizeChange: (cb: (isMaximized: boolean) => void) => (() => void)
   onSnapshotCreated: (cb: (data: { typ: string; woche: string }) => void) => (() => void)
+  // Auto-Updater
+  onUpdateAvailable: (cb: () => void) => (() => void)
+  onUpdateDownloaded: (cb: () => void) => (() => void)
+  installUpdate: () => void
 }

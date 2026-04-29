@@ -47,6 +47,32 @@ export default function App() {
     return () => clearTimeout(timer)
   }, [activeSaison?.id])
 
+  // Auto-Update Listeners
+  useEffect(() => {
+    const unsubAvailable = window.api.onUpdateAvailable(() => {
+      toast.info('Update verfügbar', {
+        description: 'Ein neues Update wird im Hintergrund heruntergeladen.',
+        duration: 5000,
+      })
+    })
+
+    const unsubDownloaded = window.api.onUpdateDownloaded(() => {
+      toast.success('Update bereit', {
+        description: 'Das Update wurde heruntergeladen und wird beim nächsten Start installiert.',
+        action: {
+          label: 'Jetzt neu starten',
+          onClick: () => window.api.installUpdate(),
+        },
+        duration: Infinity,
+      })
+    })
+
+    return () => {
+      unsubAvailable()
+      unsubDownloaded()
+    }
+  }, [])
+
   return (
     <>
       <Toaster 
