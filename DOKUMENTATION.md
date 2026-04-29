@@ -72,6 +72,25 @@ Die Kommunikation zwischen Main und Renderer erfolgt über getypte Kanäle in `e
 ### Befehle
 - `npm run dev`: Startet die Entwicklungsumgebung mit HMR.
 - `npm run build`: Erstellt ein installierbares Windows-Paket (`.exe`) via `electron-builder`.
+- `npm run release`: Baut die App und lädt sie direkt als Release auf GitHub hoch.
+
+### Update-Pipeline & Versionierung
+Die App verfügt über eine automatische Update-Funktion via **GitHub Releases**.
+
+#### Versionierung:
+- Die Version wird ausschliesslich in der **`package.json`** gesteuert (z. B. `"version": "1.0.1"`).
+- **Wichtig**: Bei jeder neuen Veröffentlichung **muss** die Versionsnummer erhöht werden, damit der Auto-Updater erkennt, dass eine neue Version vorliegt.
+- Die `package-lock.json` wird von `npm` automatisch synchronisiert, ist aber für die Update-Logik der App selbst irrelevant. Massgeblich ist nur die `version` in der `package.json`.
+
+#### Release-Prozess:
+1. Versionsnummer in `package.json` erhöhen.
+2. In der PowerShell den GitHub Token setzen: `$env:GH_TOKEN="dein_token"`
+3. Befehl ausführen: `npm run release`
+4. Auf GitHub unter "Releases" den erstellten **Draft** bearbeiten und auf **"Publish Release"** klicken.
+
+#### Hosting:
+- Die Releases werden auf GitHub unter `ZensykU2/WaediAlphuette` gehostet.
+- Der Main-Prozess (`updater.ts`) prüft bei jedem Start im Hintergrund auf neue Versionen.
 
 ### Verzeichnisse
 - `electron/db`: Migrationslogik und SQL-Queries.
