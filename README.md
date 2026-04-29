@@ -1,10 +1,10 @@
-# 🏔️ Wädi Alphütte — Finanz- & Budgetverwaltung
+# Wädi Alphütte — Finanz- & Budgetverwaltung
 
 A high-performance desktop application designed for the precise financial management and budget tracking of the Wädi Alphütte. Built with a modern tech stack focused on local data privacy, visual excellence, and mathematical accuracy.
 
-## ✨ Key Features
+## Key Features
 
-### 🏺 Advanced Beverage Settlement (Getränkeabrechnung)
+### Advanced Beverage Settlement (Getränkeabrechnung)
 The crown jewel of the application. A specialized inventory and financial tracking system that handles three distinct consumption tracks:
 - **Guest Sales**: Automatically calculated from stock remainders and billed at retail price.
 - **Self-Consumption**: Tracking for individual usage, automatically billed at cost price (EK).
@@ -12,20 +12,20 @@ The crown jewel of the application. A specialized inventory and financial tracki
 - **Revenue Booking**: Direct integration with the general ledger to book seasonal beverage profits with one click.
 
 ### 💰 Comprehensive Financial Tracking
-- **Revenue & Expenses**: Granular logging of food, drinks, and overnight stays with automatic profit-splitting rules (e.g., 18% private / 82% association split for drinks).
-- **Budget Planning**: Set seasonal targets per category and monitor performance in real-time.
-- **Saison Management**: Easily switch between years and seasons while keeping data strictly isolated and organized.
+Eine moderne Desktop-Anwendung zur effizienten Verwaltung der Finanzen, Budgets und Getränkebestände für die Wädi Alphütte (Gruohubel). Entwickelt mit Electron, React und SQLite.
 
-### 📈 Data Visualization & Analytics
-- **Dynamic Charts**: Powered by Recharts, providing daily, weekly, and seasonal insights.
-- **High-Precision UI**: Custom SVG rendering for PieCharts ensures pixel-perfect line connectivity and professional data presentation.
-- **Skeleton Screens**: A global loading system that ensures layout stability and zero "flickering" during navigation.
+## 📖 Dokumentation
+- [**Bedienungsanleitung (User Guide)**](BEDIENUNGSANLEITUNG.md) — Hilfe für Endbenutzer.
+- [**Technische Dokumentation**](DOKUMENTATION.md) — Architektur, DB-Schema und Logik.
 
-### 📑 Excel Integration
-- **Import**: Migrate legacy Excel data into the local SQLite database seamlessly.
-- **Export**: Generate beautiful, formatted Excel reports for beverage settlements and seasonal summaries using ExcelJS.
+## Hauptfunktionen
+- **Getränkeverwaltung**: Präzise Abrechnung von Verkäufen (Gäste, Helfer, Eigenkonsum) mit automatischen **Wochen-Snapshots**.
+- **Finanzbuchhaltung**: Einnahmen- und Ausgabenerfassung mit automatischem Split (Verein/Privat).
+- **Budgetplanung**: Überwachung von Saisonbudgets.
+- **Reporting**: Grafische Auswertungen (Tages-, Wochen-, Saisonberichte) und Excel-Exporte.
+- **Benutzerfreundlich**: Dark-Mode Design, intuitive Bedienung und Schutz vor Fehleingaben (keine negativen Zahlen).
 
-## 🛠️ Technology Stack
+## Technology Stack
 
 | Layer | Technology |
 | :--- | :--- |
@@ -58,7 +58,7 @@ The crown jewel of the application. A specialized inventory and financial tracki
 └── package.json
 ```
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 - [Node.js](https://nodejs.org/) (v18 or higher recommended)
@@ -89,11 +89,9 @@ Run the logic and unit tests using Vitest:
 npm run test
 ```
 
-## 🎨 Design Philosophy
+## Design Philosophy
 The application follows a custom **Alpine Aesthetic**, moving away from standard UI defaults in favor of:
 - **Cohesive Palettes**: Deep forest greens, slate grays, and warm alpine golds.
 - **Glassmorphism**: Subtle backdrop blurs and transparency for a premium feel.
 - **Micro-Animations**: Content fade-ins and smooth transitions to improve perceived performance.
 
----
-*Created with ❤️ for the Wädi Alphütte.*
