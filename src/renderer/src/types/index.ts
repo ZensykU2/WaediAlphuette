@@ -127,6 +127,139 @@ export interface WochenSnapshotMeta {
   has_ende: 0 | 1
 }
 
+// ── New module types ──────────────────────────────────────────────────────────
+
+export interface Helfer {
+  id: number
+  name: string
+  telefon?: string
+  email?: string
+  notiz?: string
+  erstellt_am: string
+}
+
+export interface HelferEinsatz {
+  id: number
+  saison_id: number
+  helfer_id: number
+  helfer_name?: string
+  datum: string
+  aufgabe: string
+  schicht?: string
+  uebernachtung: 0 | 1
+  zimmer_id?: number
+  zimmer_name?: string
+  notiz?: string
+  erstellt_am: string
+}
+
+export type ZimmerTyp = '6er' | '5er' | '4er' | 'huettenwart'
+
+export interface Zimmer {
+  id: number
+  name: string
+  typ: ZimmerTyp
+  kapazitaet: number
+}
+
+export interface ZimmerBelegung {
+  id: number
+  saison_id: number
+  zimmer_id: number
+  zimmer_name?: string
+  zimmer_typ?: ZimmerTyp
+  kapazitaet?: number
+  datum_von: string
+  datum_bis: string
+  gast_name: string
+  typ: 'gast' | 'helfer'
+  notiz?: string
+  erstellt_am: string
+}
+
+export type AnlassStatus = 'geplant' | 'bestaetigt' | 'abgesagt'
+export type AnlassTyp = 'verein' | 'privat' | 'sonstiges'
+
+export interface Anlass {
+  id: number
+  saison_id: number
+  datum: string
+  gruppe: string
+  personenzahl_min: number
+  personenzahl_max?: number
+  typ: AnlassTyp
+  kegelbahn: 0 | 1
+  preis_pro_stunde?: number
+  notiz?: string
+  status: AnlassStatus
+  erstellt_am: string
+}
+
+export interface Menue {
+  id: number
+  saison_id: number
+  pfad: string
+  hochgeladen_am: string
+}
+
+export type EinkaufKategorie = 'lebensmittel' | 'getraenke' | 'material' | 'sonstiges'
+
+export interface Einkaufsitem {
+  id: number
+  saison_id: number
+  kategorie: EinkaufKategorie
+  artikel: string
+  menge?: number
+  einheit?: string
+  besorgt: 0 | 1
+  notiz?: string
+  erstellt_am: string
+}
+
+export interface Rezept {
+  id: number
+  titel: string
+  basis_personen: number
+  zeitaufwand_min?: number
+  zubereitung?: string
+  notiz?: string
+  erstellt_am: string
+}
+
+export interface RezeptZutat {
+  id: number
+  rezept_id: number
+  artikel: string
+  menge: number
+  einheit?: string
+}
+
+export type TodoPrioritaet = 'hoch' | 'mittel' | 'tief'
+export type TodoStatus = 'offen' | 'in_arbeit' | 'erledigt'
+
+export interface Todo {
+  id: number
+  saison_id?: number
+  titel: string
+  beschreibung?: string
+  prioritaet: TodoPrioritaet
+  status: TodoStatus
+  faellig_am?: string
+  erstellt_am: string
+}
+
+export type LearningKategorie = 'positiv' | 'negativ' | 'verbesserung'
+
+export interface Learning {
+  id: number
+  saison_id?: number
+  datum: string
+  kategorie: LearningKategorie
+  titel: string
+  beschreibung?: string
+  erstellt_am: string
+}
+
 export interface WaediApi {
   getSaisons: () => Promise<Saison[]>
   createSaison: (data: Partial<Saison>) => Promise<Saison>
@@ -166,6 +299,7 @@ export interface WaediApi {
   exportExcel: (saisonId: number, filePath: string, date?: string) => Promise<void>
   openFileDialog: () => Promise<string | null>
   saveFileDialog: (defaultName: string) => Promise<string | null>
+  openPdfDialog: () => Promise<string | null>
   // Window Controls
   minimize: () => void
   maximize: () => void
@@ -177,4 +311,42 @@ export interface WaediApi {
   onUpdateAvailable: (cb: () => void) => (() => void)
   onUpdateDownloaded: (cb: () => void) => (() => void)
   installUpdate: () => void
+  // Helfer & Einsätze
+  getAllHelfer: () => Promise<Helfer[]>
+  saveHelfer: (data: Partial<Helfer>) => Promise<Helfer>
+  deleteHelfer: (id: number) => Promise<void>
+  getEinsaetze: (saisonId: number) => Promise<HelferEinsatz[]>
+  saveEinsatz: (data: Partial<HelferEinsatz>) => Promise<HelferEinsatz>
+  deleteEinsatz: (id: number) => Promise<void>
+  // Zimmer
+  getAllZimmer: () => Promise<Zimmer[]>
+  getZimmerBelegung: (saisonId: number) => Promise<ZimmerBelegung[]>
+  saveZimmerBelegung: (data: Partial<ZimmerBelegung>) => Promise<ZimmerBelegung>
+  deleteZimmerBelegung: (id: number) => Promise<void>
+  // Anlässe
+  getAnlaesse: (saisonId: number) => Promise<Anlass[]>
+  saveAnlass: (data: Partial<Anlass>) => Promise<Anlass>
+  deleteAnlass: (id: number) => Promise<void>
+  // Menü
+  getMenue: (saisonId: number) => Promise<Menue | undefined>
+  saveMenue: (saisonId: number, pfad: string) => Promise<Menue>
+  // Einkaufsliste
+  getEinkaufsliste: (saisonId: number) => Promise<Einkaufsitem[]>
+  saveEinkaufsitem: (data: Partial<Einkaufsitem>) => Promise<Einkaufsitem>
+  toggleEinkaufsitemBesorgt: (id: number) => Promise<Einkaufsitem>
+  deleteEinkaufsitem: (id: number) => Promise<void>
+  // Rezepte
+  getAllRezepte: () => Promise<Rezept[]>
+  saveRezept: (data: Partial<Rezept>) => Promise<Rezept>
+  saveRezeptZutaten: (rezeptId: number, zutaten: RezeptZutat[]) => Promise<void>
+  getRezeptZutaten: (rezeptId: number) => Promise<RezeptZutat[]>
+  deleteRezept: (id: number) => Promise<void>
+  // Todos
+  getTodos: (saisonId?: number) => Promise<Todo[]>
+  saveTodo: (data: Partial<Todo>) => Promise<Todo>
+  deleteTodo: (id: number) => Promise<void>
+  // Learnings
+  getLearnings: (saisonId?: number) => Promise<Learning[]>
+  saveLearning: (data: Partial<Learning>) => Promise<Learning>
+  deleteLearning: (id: number) => Promise<void>
 }

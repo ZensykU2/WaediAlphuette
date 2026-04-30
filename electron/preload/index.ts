@@ -67,23 +67,21 @@ const api = {
   // ── Dialogs ───────────────────────────────────────────────
   openFileDialog: () => ipcRenderer.invoke('dialog:openFile'),
   saveFileDialog: (defaultName: string) => ipcRenderer.invoke('dialog:saveFile', defaultName),
+  openPdfDialog: () => ipcRenderer.invoke('dialog:openPdf'),
 
   // ── Window Controls ───────────────────────────────────────
   minimize: () => ipcRenderer.send('window-minimize'),
   maximize: () => ipcRenderer.send('window-maximize'),
   close: () => ipcRenderer.send('window-close'),
 
-  // Returns current maximized state (one-time query)
   isMaximized: (): Promise<boolean> => ipcRenderer.invoke('window:isMaximized'),
 
-  // Subscribe to maximize/unmaximize events. Returns an unsubscribe function.
   onMaximizeChange: (cb: (isMaximized: boolean) => void): (() => void) => {
     const listener = (_: Electron.IpcRendererEvent, val: boolean) => cb(val)
     ipcRenderer.on('window:maximizeChange', listener)
     return () => ipcRenderer.removeListener('window:maximizeChange', listener)
   },
 
-  // Subscribe to auto-snapshot creation events. Returns an unsubscribe function.
   onSnapshotCreated: (cb: (data: { typ: string; woche: string }) => void): (() => void) => {
     const listener = (_: Electron.IpcRendererEvent, data: { typ: string; woche: string }) => cb(data)
     ipcRenderer.on('getraenke:snapshotCreated', listener)
@@ -101,7 +99,56 @@ const api = {
     ipcRenderer.on('update-downloaded', listener)
     return () => ipcRenderer.removeListener('update-downloaded', listener)
   },
-  installUpdate: () => ipcRenderer.send('install-update')
+  installUpdate: () => ipcRenderer.send('install-update'),
+
+  // ── Helfer ────────────────────────────────────────────────
+  getAllHelfer: () => ipcRenderer.invoke('helfer:getAll'),
+  saveHelfer: (data: unknown) => ipcRenderer.invoke('helfer:save', data),
+  deleteHelfer: (id: number) => ipcRenderer.invoke('helfer:delete', id),
+
+  // ── Einsätze ──────────────────────────────────────────────
+  getEinsaetze: (saisonId: number) => ipcRenderer.invoke('einsaetze:get', saisonId),
+  saveEinsatz: (data: unknown) => ipcRenderer.invoke('einsaetze:save', data),
+  deleteEinsatz: (id: number) => ipcRenderer.invoke('einsaetze:delete', id),
+
+  // ── Zimmer ────────────────────────────────────────────────
+  getAllZimmer: () => ipcRenderer.invoke('zimmer:getAll'),
+  getZimmerBelegung: (saisonId: number) => ipcRenderer.invoke('zimmer:getBelegung', saisonId),
+  saveZimmerBelegung: (data: unknown) => ipcRenderer.invoke('zimmer:saveBelegung', data),
+  deleteZimmerBelegung: (id: number) => ipcRenderer.invoke('zimmer:deleteBelegung', id),
+
+  // ── Anlässe ───────────────────────────────────────────────
+  getAnlaesse: (saisonId: number) => ipcRenderer.invoke('anlaesse:get', saisonId),
+  saveAnlass: (data: unknown) => ipcRenderer.invoke('anlaesse:save', data),
+  deleteAnlass: (id: number) => ipcRenderer.invoke('anlaesse:delete', id),
+
+  // ── Menü ──────────────────────────────────────────────────
+  getMenue: (saisonId: number) => ipcRenderer.invoke('menue:get', saisonId),
+  saveMenue: (saisonId: number, pfad: string) => ipcRenderer.invoke('menue:save', saisonId, pfad),
+
+  // ── Einkaufsliste ─────────────────────────────────────────
+  getEinkaufsliste: (saisonId: number) => ipcRenderer.invoke('einkauf:get', saisonId),
+  saveEinkaufsitem: (data: unknown) => ipcRenderer.invoke('einkauf:save', data),
+  toggleEinkaufsitemBesorgt: (id: number) => ipcRenderer.invoke('einkauf:toggleBesorgt', id),
+  deleteEinkaufsitem: (id: number) => ipcRenderer.invoke('einkauf:delete', id),
+
+  // ── Rezepte ───────────────────────────────────────────────
+  getAllRezepte: () => ipcRenderer.invoke('rezepte:getAll'),
+  saveRezept: (data: unknown) => ipcRenderer.invoke('rezepte:save', data),
+  saveRezeptZutaten: (rezeptId: number, zutaten: unknown) =>
+    ipcRenderer.invoke('rezepte:saveZutaten', rezeptId, zutaten),
+  getRezeptZutaten: (rezeptId: number) => ipcRenderer.invoke('rezepte:getZutaten', rezeptId),
+  deleteRezept: (id: number) => ipcRenderer.invoke('rezepte:delete', id),
+
+  // ── Todos ─────────────────────────────────────────────────
+  getTodos: (saisonId?: number) => ipcRenderer.invoke('todos:get', saisonId),
+  saveTodo: (data: unknown) => ipcRenderer.invoke('todos:save', data),
+  deleteTodo: (id: number) => ipcRenderer.invoke('todos:delete', id),
+
+  // ── Learnings ─────────────────────────────────────────────
+  getLearnings: (saisonId?: number) => ipcRenderer.invoke('learnings:get', saisonId),
+  saveLearning: (data: unknown) => ipcRenderer.invoke('learnings:save', data),
+  deleteLearning: (id: number) => ipcRenderer.invoke('learnings:delete', id),
 }
 
 if (process.contextIsolated) {

@@ -168,6 +168,145 @@ function runMigrations(): void {
     )
   `)
 
+  // ── New feature tables ────────────────────────────────────────────────────
+  db.run(`
+    CREATE TABLE IF NOT EXISTS helfer (
+      id        INTEGER PRIMARY KEY AUTOINCREMENT,
+      name      TEXT NOT NULL,
+      telefon   TEXT,
+      email     TEXT,
+      notiz     TEXT,
+      erstellt_am TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS helfer_einsaetze (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      saison_id      INTEGER NOT NULL REFERENCES saisons(id) ON DELETE CASCADE,
+      helfer_id      INTEGER NOT NULL REFERENCES helfer(id) ON DELETE CASCADE,
+      datum          TEXT    NOT NULL,
+      aufgabe        TEXT    NOT NULL,
+      schicht        TEXT,
+      uebernachtung  INTEGER NOT NULL DEFAULT 0,
+      zimmer_id      INTEGER REFERENCES zimmer(id) ON DELETE SET NULL,
+      notiz          TEXT,
+      erstellt_am    TEXT    NOT NULL DEFAULT (datetime('now'))
+    )
+  `)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS zimmer (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      name       TEXT NOT NULL,
+      typ        TEXT NOT NULL CHECK(typ IN ('6er','5er','4er','huettenwart')),
+      kapazitaet INTEGER NOT NULL DEFAULT 1
+    )
+  `)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS zimmer_belegung (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      saison_id  INTEGER NOT NULL REFERENCES saisons(id) ON DELETE CASCADE,
+      zimmer_id  INTEGER NOT NULL REFERENCES zimmer(id) ON DELETE CASCADE,
+      datum_von  TEXT NOT NULL,
+      datum_bis  TEXT NOT NULL,
+      gast_name  TEXT NOT NULL,
+      typ        TEXT NOT NULL CHECK(typ IN ('gast','helfer')),
+      notiz      TEXT,
+      erstellt_am TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS anlaesse (
+      id                INTEGER PRIMARY KEY AUTOINCREMENT,
+      saison_id         INTEGER NOT NULL REFERENCES saisons(id) ON DELETE CASCADE,
+      datum             TEXT    NOT NULL,
+      gruppe            TEXT    NOT NULL,
+      personenzahl_min  INTEGER NOT NULL DEFAULT 1,
+      personenzahl_max  INTEGER,
+      typ               TEXT    NOT NULL CHECK(typ IN ('verein','privat','sonstiges')) DEFAULT 'verein',
+      kegelbahn         INTEGER NOT NULL DEFAULT 0,
+      preis_pro_stunde  REAL,
+      notiz             TEXT,
+      status            TEXT    NOT NULL CHECK(status IN ('geplant','bestaetigt','abgesagt')) DEFAULT 'geplant',
+      erstellt_am       TEXT    NOT NULL DEFAULT (datetime('now'))
+    )
+  `)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS menue (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      saison_id    INTEGER NOT NULL REFERENCES saisons(id) ON DELETE CASCADE,
+      pfad         TEXT    NOT NULL,
+      hochgeladen_am TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(saison_id)
+    )
+  `)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS einkaufsliste (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      saison_id  INTEGER NOT NULL REFERENCES saisons(id) ON DELETE CASCADE,
+      kategorie  TEXT NOT NULL CHECK(kategorie IN ('lebensmittel','getraenke','material','sonstiges')) DEFAULT 'lebensmittel',
+      artikel    TEXT NOT NULL,
+      menge      REAL,
+      einheit    TEXT,
+      besorgt    INTEGER NOT NULL DEFAULT 0,
+      notiz      TEXT,
+      erstellt_am TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS rezepte (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      titel           TEXT    NOT NULL,
+      basis_personen  INTEGER NOT NULL DEFAULT 4,
+      zeitaufwand_min INTEGER,
+      zubereitung     TEXT,
+      notiz           TEXT,
+      erstellt_am     TEXT    NOT NULL DEFAULT (datetime('now'))
+    )
+  `)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS rezept_zutaten (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      rezept_id  INTEGER NOT NULL REFERENCES rezepte(id) ON DELETE CASCADE,
+      artikel    TEXT    NOT NULL,
+      menge      REAL    NOT NULL DEFAULT 0,
+      einheit    TEXT
+    )
+  `)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS todos (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      saison_id    INTEGER REFERENCES saisons(id) ON DELETE CASCADE,
+      titel        TEXT NOT NULL,
+      beschreibung TEXT,
+      prioritaet   TEXT NOT NULL CHECK(prioritaet IN ('hoch','mittel','tief')) DEFAULT 'mittel',
+      status       TEXT NOT NULL CHECK(status IN ('offen','in_arbeit','erledigt')) DEFAULT 'offen',
+      faellig_am   TEXT,
+      erstellt_am  TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS learnings (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      saison_id    INTEGER REFERENCES saisons(id) ON DELETE CASCADE,
+      datum        TEXT NOT NULL DEFAULT (date('now')),
+      kategorie    TEXT NOT NULL CHECK(kategorie IN ('positiv','negativ','verbesserung')) DEFAULT 'positiv',
+      titel        TEXT NOT NULL,
+      beschreibung TEXT,
+      erstellt_am  TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `)
+
+  // Seed standard Zimmer (idempotent)
+  const zimmerCount = (get<any>('SELECT COUNT(*) as c FROM zimmer') ?? { c: 0 }).c
+  if (Number(zimmerCount) === 0) {
+    db.run(`INSERT INTO zimmer (name, typ, kapazitaet) VALUES
+      ('Zimmer 6er', '6er', 6),
+      ('Zimmer 5er', '5er', 5),
+      ('Zimmer 4er', '4er', 4),
+      ('Hüttenwartszimmer', 'huettenwart', 2)`)
+    persist()
+  }
+
   // One-time migrations for existing DBs
   try {
      db.run('ALTER TABLE getraenke_stammdaten ADD COLUMN min_bestand INTEGER DEFAULT 0')
@@ -668,4 +807,264 @@ export function getWeekSnapshot(saisonId: number, wocheMontag: string, typ: 'sta
      ORDER BY g.name ASC`,
     [saisonId, wocheMontag, typ]
   )
+}
+
+// ── Helfer ────────────────────────────────────────────────────────────────────
+
+export function getAllHelfer() {
+  return all('SELECT * FROM helfer ORDER BY name ASC')
+}
+
+export function saveHelfer(h: { id?: number; name: string; telefon?: string; email?: string; notiz?: string }) {
+  if (h.id) {
+    run('UPDATE helfer SET name=?, telefon=?, email=?, notiz=? WHERE id=?',
+      [h.name, h.telefon ?? null, h.email ?? null, h.notiz ?? null, h.id])
+    return get('SELECT * FROM helfer WHERE id=?', [h.id])
+  }
+  run('INSERT INTO helfer (name, telefon, email, notiz) VALUES (?,?,?,?)',
+    [h.name, h.telefon ?? null, h.email ?? null, h.notiz ?? null])
+  return get('SELECT * FROM helfer WHERE id=?', [lastId()])
+}
+
+export function deleteHelfer(id: number) {
+  run('DELETE FROM helfer WHERE id=?', [id])
+}
+
+// ── Helfer-Einsätze ───────────────────────────────────────────────────────────
+
+export function getEinsaetze(saisonId: number) {
+  return all(
+    `SELECT e.*, h.name AS helfer_name, z.name AS zimmer_name
+     FROM helfer_einsaetze e
+     JOIN helfer h ON e.helfer_id = h.id
+     LEFT JOIN zimmer z ON e.zimmer_id = z.id
+     WHERE e.saison_id = ?
+     ORDER BY e.datum ASC, h.name ASC`,
+    [saisonId]
+  )
+}
+
+export function saveEinsatz(e: {
+  id?: number; saison_id: number; helfer_id: number; datum: string;
+  aufgabe: string; schicht?: string; uebernachtung?: boolean; zimmer_id?: number; notiz?: string
+}) {
+  const ue = e.uebernachtung ? 1 : 0
+  if (e.id) {
+    run('UPDATE helfer_einsaetze SET saison_id=?,helfer_id=?,datum=?,aufgabe=?,schicht=?,uebernachtung=?,zimmer_id=?,notiz=? WHERE id=?',
+      [e.saison_id, e.helfer_id, e.datum, e.aufgabe, e.schicht ?? null, ue, e.zimmer_id ?? null, e.notiz ?? null, e.id])
+    return get('SELECT * FROM helfer_einsaetze WHERE id=?', [e.id])
+  }
+  run('INSERT INTO helfer_einsaetze (saison_id,helfer_id,datum,aufgabe,schicht,uebernachtung,zimmer_id,notiz) VALUES (?,?,?,?,?,?,?,?)',
+    [e.saison_id, e.helfer_id, e.datum, e.aufgabe, e.schicht ?? null, ue, e.zimmer_id ?? null, e.notiz ?? null])
+  return get('SELECT * FROM helfer_einsaetze WHERE id=?', [lastId()])
+}
+
+export function deleteEinsatz(id: number) {
+  run('DELETE FROM helfer_einsaetze WHERE id=?', [id])
+}
+
+// ── Zimmer ────────────────────────────────────────────────────────────────────
+
+export function getAllZimmer() {
+  return all('SELECT * FROM zimmer ORDER BY typ, name')
+}
+
+export function getZimmerBelegung(saisonId: number) {
+  return all(
+    `SELECT b.*, z.name AS zimmer_name, z.typ AS zimmer_typ, z.kapazitaet
+     FROM zimmer_belegung b
+     JOIN zimmer z ON b.zimmer_id = z.id
+     WHERE b.saison_id = ?
+     ORDER BY b.datum_von ASC`,
+    [saisonId]
+  )
+}
+
+export function saveZimmerBelegung(b: {
+  id?: number; saison_id: number; zimmer_id: number;
+  datum_von: string; datum_bis: string; gast_name: string; typ: 'gast' | 'helfer'; notiz?: string
+}) {
+  if (b.id) {
+    run('UPDATE zimmer_belegung SET saison_id=?,zimmer_id=?,datum_von=?,datum_bis=?,gast_name=?,typ=?,notiz=? WHERE id=?',
+      [b.saison_id, b.zimmer_id, b.datum_von, b.datum_bis, b.gast_name, b.typ, b.notiz ?? null, b.id])
+    return get('SELECT * FROM zimmer_belegung WHERE id=?', [b.id])
+  }
+  run('INSERT INTO zimmer_belegung (saison_id,zimmer_id,datum_von,datum_bis,gast_name,typ,notiz) VALUES (?,?,?,?,?,?,?)',
+    [b.saison_id, b.zimmer_id, b.datum_von, b.datum_bis, b.gast_name, b.typ, b.notiz ?? null])
+  return get('SELECT * FROM zimmer_belegung WHERE id=?', [lastId()])
+}
+
+export function deleteZimmerBelegung(id: number) {
+  run('DELETE FROM zimmer_belegung WHERE id=?', [id])
+}
+
+// ── Anlässe ───────────────────────────────────────────────────────────────────
+
+export function getAnlaesse(saisonId: number) {
+  return all('SELECT * FROM anlaesse WHERE saison_id=? ORDER BY datum ASC', [saisonId])
+}
+
+export function saveAnlass(a: {
+  id?: number; saison_id: number; datum: string; gruppe: string;
+  personenzahl_min: number; personenzahl_max?: number; typ: string;
+  kegelbahn?: boolean; preis_pro_stunde?: number; notiz?: string;
+  status?: string
+}) {
+  const kb = a.kegelbahn ? 1 : 0
+  const status = a.status ?? 'geplant'
+  if (a.id) {
+    run('UPDATE anlaesse SET saison_id=?,datum=?,gruppe=?,personenzahl_min=?,personenzahl_max=?,typ=?,kegelbahn=?,preis_pro_stunde=?,notiz=?,status=? WHERE id=?',
+      [a.saison_id, a.datum, a.gruppe, a.personenzahl_min, a.personenzahl_max ?? null, a.typ, kb, a.preis_pro_stunde ?? null, a.notiz ?? null, status, a.id])
+    return get('SELECT * FROM anlaesse WHERE id=?', [a.id])
+  }
+  run('INSERT INTO anlaesse (saison_id,datum,gruppe,personenzahl_min,personenzahl_max,typ,kegelbahn,preis_pro_stunde,notiz,status) VALUES (?,?,?,?,?,?,?,?,?,?)',
+    [a.saison_id, a.datum, a.gruppe, a.personenzahl_min, a.personenzahl_max ?? null, a.typ, kb, a.preis_pro_stunde ?? null, a.notiz ?? null, status])
+  return get('SELECT * FROM anlaesse WHERE id=?', [lastId()])
+}
+
+export function deleteAnlass(id: number) {
+  run('DELETE FROM anlaesse WHERE id=?', [id])
+}
+
+// ── Menü ──────────────────────────────────────────────────────────────────────
+
+export function getMenue(saisonId: number) {
+  return get('SELECT * FROM menue WHERE saison_id=?', [saisonId])
+}
+
+export function saveMenue(saisonId: number, pfad: string) {
+  run('INSERT INTO menue (saison_id, pfad) VALUES (?,?) ON CONFLICT(saison_id) DO UPDATE SET pfad=excluded.pfad, hochgeladen_am=datetime(\'now\')',
+    [saisonId, pfad])
+  return get('SELECT * FROM menue WHERE saison_id=?', [saisonId])
+}
+
+// ── Einkaufsliste ─────────────────────────────────────────────────────────────
+
+export function getEinkaufsliste(saisonId: number) {
+  return all('SELECT * FROM einkaufsliste WHERE saison_id=? ORDER BY kategorie ASC, artikel ASC', [saisonId])
+}
+
+export function saveEinkaufsitem(item: {
+  id?: number; saison_id: number; kategorie: string; artikel: string;
+  menge?: number; einheit?: string; besorgt?: boolean; notiz?: string
+}) {
+  const besorgt = item.besorgt ? 1 : 0
+  if (item.id) {
+    run('UPDATE einkaufsliste SET saison_id=?,kategorie=?,artikel=?,menge=?,einheit=?,besorgt=?,notiz=? WHERE id=?',
+      [item.saison_id, item.kategorie, item.artikel, item.menge ?? null, item.einheit ?? null, besorgt, item.notiz ?? null, item.id])
+    return get('SELECT * FROM einkaufsliste WHERE id=?', [item.id])
+  }
+  run('INSERT INTO einkaufsliste (saison_id,kategorie,artikel,menge,einheit,besorgt,notiz) VALUES (?,?,?,?,?,?,?)',
+    [item.saison_id, item.kategorie, item.artikel, item.menge ?? null, item.einheit ?? null, besorgt, item.notiz ?? null])
+  return get('SELECT * FROM einkaufsliste WHERE id=?', [lastId()])
+}
+
+export function toggleEinkaufsitemBesorgt(id: number) {
+  run('UPDATE einkaufsliste SET besorgt = 1 - besorgt WHERE id=?', [id])
+  return get('SELECT * FROM einkaufsliste WHERE id=?', [id])
+}
+
+export function deleteEinkaufsitem(id: number) {
+  run('DELETE FROM einkaufsliste WHERE id=?', [id])
+}
+
+// ── Rezepte ───────────────────────────────────────────────────────────────────
+
+export function getAllRezepte() {
+  return all('SELECT * FROM rezepte ORDER BY titel ASC')
+}
+
+export function saveRezept(r: {
+  id?: number; titel: string; basis_personen: number;
+  zeitaufwand_min?: number; zubereitung?: string; notiz?: string
+}) {
+  if (r.id) {
+    run('UPDATE rezepte SET titel=?,basis_personen=?,zeitaufwand_min=?,zubereitung=?,notiz=? WHERE id=?',
+      [r.titel, r.basis_personen, r.zeitaufwand_min ?? null, r.zubereitung ?? null, r.notiz ?? null, r.id])
+    return get('SELECT * FROM rezepte WHERE id=?', [r.id])
+  }
+  run('INSERT INTO rezepte (titel,basis_personen,zeitaufwand_min,zubereitung,notiz) VALUES (?,?,?,?,?)',
+    [r.titel, r.basis_personen, r.zeitaufwand_min ?? null, r.zubereitung ?? null, r.notiz ?? null])
+  return get('SELECT * FROM rezepte WHERE id=?', [lastId()])
+}
+
+export function saveRezeptZutaten(rezeptId: number, zutaten: Array<{ artikel: string; menge: number; einheit?: string }>) {
+  db.run('BEGIN')
+  try {
+    db.run('DELETE FROM rezept_zutaten WHERE rezept_id=?', [rezeptId])
+    for (const z of zutaten) {
+      db.run('INSERT INTO rezept_zutaten (rezept_id,artikel,menge,einheit) VALUES (?,?,?,?)',
+        [rezeptId, z.artikel, z.menge, z.einheit ?? null])
+    }
+    db.run('COMMIT')
+    persist()
+  } catch (e) {
+    db.run('ROLLBACK')
+    throw e
+  }
+}
+
+export function getRezeptZutaten(rezeptId: number) {
+  return all('SELECT * FROM rezept_zutaten WHERE rezept_id=? ORDER BY id ASC', [rezeptId])
+}
+
+export function deleteRezept(id: number) {
+  run('DELETE FROM rezepte WHERE id=?', [id])
+}
+
+// ── Todos ─────────────────────────────────────────────────────────────────────
+
+export function getTodos(saisonId?: number) {
+  if (saisonId) {
+    return all('SELECT * FROM todos WHERE saison_id=? ORDER BY prioritaet ASC, erstellt_am DESC', [saisonId])
+  }
+  return all('SELECT * FROM todos ORDER BY prioritaet ASC, erstellt_am DESC')
+}
+
+export function saveTodo(t: {
+  id?: number; saison_id?: number; titel: string; beschreibung?: string;
+  prioritaet?: string; status?: string; faellig_am?: string
+}) {
+  const prio = t.prioritaet ?? 'mittel'
+  const status = t.status ?? 'offen'
+  if (t.id) {
+    run('UPDATE todos SET saison_id=?,titel=?,beschreibung=?,prioritaet=?,status=?,faellig_am=? WHERE id=?',
+      [t.saison_id ?? null, t.titel, t.beschreibung ?? null, prio, status, t.faellig_am ?? null, t.id])
+    return get('SELECT * FROM todos WHERE id=?', [t.id])
+  }
+  run('INSERT INTO todos (saison_id,titel,beschreibung,prioritaet,status,faellig_am) VALUES (?,?,?,?,?,?)',
+    [t.saison_id ?? null, t.titel, t.beschreibung ?? null, prio, status, t.faellig_am ?? null])
+  return get('SELECT * FROM todos WHERE id=?', [lastId()])
+}
+
+export function deleteTodo(id: number) {
+  run('DELETE FROM todos WHERE id=?', [id])
+}
+
+// ── Learnings ─────────────────────────────────────────────────────────────────
+
+export function getLearnings(saisonId?: number) {
+  if (saisonId) {
+    return all('SELECT * FROM learnings WHERE saison_id=? ORDER BY datum DESC', [saisonId])
+  }
+  return all('SELECT * FROM learnings ORDER BY datum DESC')
+}
+
+export function saveLearning(l: {
+  id?: number; saison_id?: number; datum?: string;
+  kategorie: string; titel: string; beschreibung?: string
+}) {
+  const datum = l.datum ?? new Date().toISOString().split('T')[0]
+  if (l.id) {
+    run('UPDATE learnings SET saison_id=?,datum=?,kategorie=?,titel=?,beschreibung=? WHERE id=?',
+      [l.saison_id ?? null, datum, l.kategorie, l.titel, l.beschreibung ?? null, l.id])
+    return get('SELECT * FROM learnings WHERE id=?', [l.id])
+  }
+  run('INSERT INTO learnings (saison_id,datum,kategorie,titel,beschreibung) VALUES (?,?,?,?,?)',
+    [l.saison_id ?? null, datum, l.kategorie, l.titel, l.beschreibung ?? null])
+  return get('SELECT * FROM learnings WHERE id=?', [lastId()])
+}
+
+export function deleteLearning(id: number) {
+  run('DELETE FROM learnings WHERE id=?', [id])
 }

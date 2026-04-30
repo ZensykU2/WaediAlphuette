@@ -8,7 +8,17 @@ import {
   getGetraenkeStammdaten, saveGetraenkStammdat, deleteGetraenkStammdat,
   getGetraenkeAbrechnung, saveGetraenkeAbrechnung,
   getGetraenkeBookingStatus, bookGetraenkeRevenue, unbookGetraenkeRevenue,
-  getWeekSnapshotList, getWeekSnapshot
+  getWeekSnapshotList, getWeekSnapshot,
+  // New modules
+  getAllHelfer, saveHelfer, deleteHelfer,
+  getEinsaetze, saveEinsatz, deleteEinsatz,
+  getAllZimmer, getZimmerBelegung, saveZimmerBelegung, deleteZimmerBelegung,
+  getAnlaesse, saveAnlass, deleteAnlass,
+  getMenue, saveMenue,
+  getEinkaufsliste, saveEinkaufsitem, toggleEinkaufsitemBesorgt, deleteEinkaufsitem,
+  getAllRezepte, saveRezept, saveRezeptZutaten, getRezeptZutaten, deleteRezept,
+  getTodos, saveTodo, deleteTodo,
+  getLearnings, saveLearning, deleteLearning
 } from '../db/database'
 import { importExcel, exportExcel, exportDrinksExcel, exportDrinksWeekExcel } from '../excel/excel'
 
@@ -84,4 +94,60 @@ export function registerAllHandlers(): void {
     })
     return result.canceled ? null : result.filePath
   })
+
+  ipcMain.handle('dialog:openPdf', async () => {
+    const result = await dialog.showOpenDialog({
+      filters: [{ name: 'PDF', extensions: ['pdf'] }],
+      properties: ['openFile']
+    })
+    return result.canceled ? null : result.filePaths[0]
+  })
+
+  // ── Helfer ────────────────────────────────────────────────
+  ipcMain.handle('helfer:getAll',    () => getAllHelfer())
+  ipcMain.handle('helfer:save',      (_, data) => saveHelfer(data))
+  ipcMain.handle('helfer:delete',    (_, id) => deleteHelfer(id))
+
+  // ── Einsätze ──────────────────────────────────────────────
+  ipcMain.handle('einsaetze:get',    (_, saisonId) => getEinsaetze(saisonId))
+  ipcMain.handle('einsaetze:save',   (_, data) => saveEinsatz(data))
+  ipcMain.handle('einsaetze:delete', (_, id) => deleteEinsatz(id))
+
+  // ── Zimmer ────────────────────────────────────────────────
+  ipcMain.handle('zimmer:getAll',           () => getAllZimmer())
+  ipcMain.handle('zimmer:getBelegung',      (_, saisonId) => getZimmerBelegung(saisonId))
+  ipcMain.handle('zimmer:saveBelegung',     (_, data) => saveZimmerBelegung(data))
+  ipcMain.handle('zimmer:deleteBelegung',   (_, id) => deleteZimmerBelegung(id))
+
+  // ── Anlässe ───────────────────────────────────────────────
+  ipcMain.handle('anlaesse:get',    (_, saisonId) => getAnlaesse(saisonId))
+  ipcMain.handle('anlaesse:save',   (_, data) => saveAnlass(data))
+  ipcMain.handle('anlaesse:delete', (_, id) => deleteAnlass(id))
+
+  // ── Menü ──────────────────────────────────────────────────
+  ipcMain.handle('menue:get',  (_, saisonId) => getMenue(saisonId))
+  ipcMain.handle('menue:save', (_, saisonId, pfad) => saveMenue(saisonId, pfad))
+
+  // ── Einkaufsliste ─────────────────────────────────────────
+  ipcMain.handle('einkauf:get',          (_, saisonId) => getEinkaufsliste(saisonId))
+  ipcMain.handle('einkauf:save',         (_, data) => saveEinkaufsitem(data))
+  ipcMain.handle('einkauf:toggleBesorgt',(_, id) => toggleEinkaufsitemBesorgt(id))
+  ipcMain.handle('einkauf:delete',       (_, id) => deleteEinkaufsitem(id))
+
+  // ── Rezepte ───────────────────────────────────────────────
+  ipcMain.handle('rezepte:getAll',      () => getAllRezepte())
+  ipcMain.handle('rezepte:save',        (_, data) => saveRezept(data))
+  ipcMain.handle('rezepte:saveZutaten', (_, rezeptId, zutaten) => saveRezeptZutaten(rezeptId, zutaten))
+  ipcMain.handle('rezepte:getZutaten',  (_, rezeptId) => getRezeptZutaten(rezeptId))
+  ipcMain.handle('rezepte:delete',      (_, id) => deleteRezept(id))
+
+  // ── Todos ─────────────────────────────────────────────────
+  ipcMain.handle('todos:get',    (_, saisonId) => getTodos(saisonId))
+  ipcMain.handle('todos:save',   (_, data) => saveTodo(data))
+  ipcMain.handle('todos:delete', (_, id) => deleteTodo(id))
+
+  // ── Learnings ─────────────────────────────────────────────
+  ipcMain.handle('learnings:get',    (_, saisonId) => getLearnings(saisonId))
+  ipcMain.handle('learnings:save',   (_, data) => saveLearning(data))
+  ipcMain.handle('learnings:delete', (_, id) => deleteLearning(id))
 }
