@@ -10,6 +10,14 @@ import Auswertung from './pages/Auswertung'
 import ExcelImport from './pages/ExcelImport'
 import Einstellungen from './pages/Einstellungen'
 import Getraenke from './pages/Getraenke'
+import Personal from './pages/Personal'
+import Zimmer from './pages/Zimmer'
+import Anlaesse from './pages/Anlaesse'
+import MenuePage from './pages/MenuePage'
+import Einkauf from './pages/Einkauf'
+import Rezepte from './pages/Rezepte'
+import Todos from './pages/Todos'
+import Learnings from './pages/Learnings'
 import { useSaisonStore, useActiveSaison } from './store/saisonStore'
 
 export default function App() {
@@ -99,6 +107,14 @@ export default function App() {
           <Route path="/auswertung" element={<Auswertung />} />
           <Route path="/excel" element={<ExcelImport />} />
           <Route path="/einstellungen" element={<Einstellungen />} />
+          <Route path="/personal" element={<Personal />} />
+          <Route path="/zimmer" element={<Zimmer />} />
+          <Route path="/anlaesse" element={<Anlaesse />} />
+          <Route path="/menue" element={<MenuePage />} />
+          <Route path="/einkauf" element={<Einkauf />} />
+          <Route path="/rezepte" element={<Rezepte />} />
+          <Route path="/todos" element={<Todos />} />
+          <Route path="/learnings" element={<Learnings />} />
         </Routes>
       </AppShell>
     </>
