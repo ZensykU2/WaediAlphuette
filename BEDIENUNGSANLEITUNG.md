@@ -1,85 +1,63 @@
 # Bedienungsanleitung — Wädi Alphütte
 
-Willkommen zur Bedienungsanleitung. Diese App hilft dir dabei, die Finanzen, Budgets und Getränkeabrechnungen der Hütte einfach und präzise zu verwalten.
+Willkommen zur Wädi Alphütte Verwaltungssoftware. Diese Anleitung hilft dir, die wichtigsten Funktionen effizient zu nutzen.
 
 ---
 
-## Erste Schritte
-
-### Saison Starten / Wechseln
-Bevor du Daten eingeben kannst, musst du eine **Saison** auswählen oder erstellen.
-1. Gehe in der Seitenleiste auf **Einstellungen**.
-2. Erstelle eine neue Saison (z.B. "Sommer 2026") oder wähle eine bestehende aus.
-3. Klicke auf **"Aktivieren"**, um diese Saison zur aktuellen Arbeitsumgebung zu machen.
+## 1. Erste Schritte: Saisons verwalten
+Alle Daten in der App sind an eine **Saison** gebunden.
+- Gehe zu **Einstellungen** (unten links).
+- Erstelle eine neue Saison (z.B. "Sommer 2026").
+- Klicke auf **"Aktivieren"**, um diese Saison zur aktuellen Arbeitsumgebung zu machen.
 
 ---
 
-## Getränkeabrechnung (Kernstück)
+## 2. Finanzen & Getränke
 
-Die Getränkeabrechnung ist so konzipiert, dass sie Inventar und Verkäufe gleichzeitig verwaltet.
+### Getränke-Abrechnung (Wichtig!)
+Die Getränke folgen einem logischen Zyklus:
+1. **Bestand Antritt**: Was ist bei Saisonstart im Keller?
+2. **Lieferungen**: Was wird während der Saison nachbestellt?
+3. **Bestand Abgabe**: Was ist aktuell (heute) noch im Keller? (Manuelle Zählung).
+4. **Verbrauch Gast**: Die Differenz wird automatisch als Verkauf berechnet.
 
-### Stammdaten pflegen
-Bevor du Verkäufe einträgst, müssen die Getränke unter **Getränke -> Stammdaten** erfasst werden:
-- **VP (Gäste)**: Verkaufspreis für normale Gäste.
-- **EK (Eigen)**: Einkaufspreis (wird für den Eigenkonsum berechnet).
-- **Helfer-EK**: Spezialpreis für Helfer/Staff.
-- **Mindestbest.**: Unterschreitet der Bestand diesen Wert, erscheint ein Warnsymbol (⚠️).
-
-### Abrechnung durchführen
-Unter **Getränke -> Abrechnung** trägst du die Zahlen ein:
-1. **Anfangsbestand**: Was war bei Saisonstart da?
-2. **Lieferungen**: Was wurde während der Saison geliefert?
-3. **Inventar Aktuell**: Trage hier das gezählte Inventar ein. Die App berechnet automatisch die Differenz als **Verkauf (Gäste)**.
-   - *Hinweis*: Du kannst auch direkt den Verkauf eingeben, dann passt sich das Inventar an.
-4. **Eigenkonsum / Helfer**: Trage hier ein, was privat oder durch Helfer konsumiert wurde.
-5. **Speichern**: Vergiss nicht, deine Änderungen oben rechts zu speichern!
-
-### Wochen-Snapshots (Automatisch)
-Die App erstellt automatisch Snapshots, um wochenweise Auswertungen zu ermöglichen:
-- **Montagmorgen**: Beim ersten Start am Montag wird der "Anfang" der Woche gespeichert.
-- **Sonntagabend**: Beim Start am Sonntag wird der "Abschluss" gespeichert.
-- Über den Button **"Wochenbericht"** kannst du diese Differenzen als Excel exportieren, um zu sehen, was *genau in dieser Woche* passiert ist.
+### Automatischer Finanz-Split
+Einnahmen in der Kategorie **"Getränke"** werden automatisch aufgeteilt:
+- 18% Privatanteil
+- 82% Vereinsanteil
 
 ---
 
-## Finanzen (Einnahmen & Ausgaben)
+## 3. Planung & Betrieb
 
-### Einnahmen erfassen
-Unter **Einnahmen** kannst du tägliche Umsätze eintragen:
-- Kategorien: Speisen, Getränke, Übernachtung.
-- Die App berechnet bei Getränken automatisch den **Vereins- (82%)** und **Privatanteil (18%)**.
+### Menü hinterlegen
+Du kannst dein eigenes Menü-PDF verknüpfen:
+- Gehe zu **Planung & Betrieb > Menü**.
+- Klicke auf **"Anderes PDF wählen"**, um deine Datei (z.B. von der Dropbox oder dem Desktop) zu verknüpfen.
+- Mit **"Verknüpfung lösen"** kehrst du jederzeit zum Standard-Menü zurück.
 
-### Ausgaben erfassen
-Unter **Ausgaben** hältst du alle Käufe fest:
-- Wähle den **Träger** (Verein oder Privat), um die Abrechnung am Saisonende korrekt zu halten.
+### Rezepte & Einkauf
+- In der **Rezept-Ansicht** kannst du die Personenzahl anpassen. Die Zutatenmengen rechnen sich automatisch hoch oder runter.
+- Klicke auf **"Zutaten in Einkaufsliste"**, um alles direkt zu übernehmen.
+- Die **Einkaufsliste** ist nach Kategorien (Lebensmittel, Getränke, etc.) sortiert und kann als Checkliste abgehakt werden.
 
----
-
-## Auswertung & Dashboard
-
-### Dashboard
-Gibt dir einen schnellen Überblick über den aktuellen Gewinn, die Ausgaben und die Umsätze der letzten 7 Tage.
-
-### Auswertung
-Hier findest du detaillierte Diagramme:
-- **Gesamtübersicht**: Wer hat wie viel Gewinn gemacht (Verein vs. Privat)?
-- **Tagesauswertung**: Was wurde an einem spezifischen Tag eingenommen/ausgegeben?
-- **Wochenauswertung**: Zusammenfassung der Finanzflüsse einer Woche.
+### Zimmerbelegung
+- Die Kacheln oben zeigen dir sofort, welches Zimmer aktuell wie stark belegt ist. Die Auslastung berechnet sich dabei aus der **Anzahl der gebuchten Betten** im Verhältnis zur Zimmerkapazität.
+- Eine Buchung kann als **"Gast"** oder **"Helfer"** markiert werden. Helfer-Buchungen werden in der Liste farblich hervorgehoben.
+- Beim Erfassen einer Buchung kannst du angeben, wie viele Betten belegt werden (z.B. wenn eine 2er-Gruppe in ein 6er-Zimmer geht).
 
 ---
 
-## Excel-Export
-Du kannst fast alle Daten als Excel exportieren:
-- **Saisonbericht**: Die komplette Getränke-Statistik.
-- **Wochenbericht**: Die Veränderung innerhalb einer Woche (Snapshots).
-- **Finanzbericht**: Alle Einnahmen und Ausgaben für die Buchhaltung.
+## 4. Berichte & Datenexport
+- Unter **Daten & Berichte** (über Einstellungen) kannst du alle Daten einer Saison als Excel-Datei exportieren.
+- Dies dient auch als Backup. Es wird empfohlen, nach jeder grösseren Änderung einen Export zu machen.
 
 ---
 
-## Tipps für den Alltag
-- **Negative Zahlen**: Die App verhindert die Eingabe negativer Zahlen, um Fehler zu vermeiden.
-- **Fenstermodus**: Du kannst die App über das Icon oben rechts maximieren oder in den Fenstermodus versetzen.
-- **Datensicherheit**: Alle Daten werden lokal auf deinem Computer gespeichert. Sichere den Ordner `data` in deinem Benutzerverzeichnis regelmäßig.
+## 5. System & Updates
+- Die App prüft beim Start automatisch auf Updates.
+- Wenn ein Update verfügbar ist, erscheint oben rechts ein Hinweis.
+- Sobald das Update heruntergeladen ist, kannst du die App neu starten, um die neueste Version zu nutzen.
 
 ---
-*Viel Erfolg bei der Bewirtschaftung der Alphütte!* 🏔️
+*Viel Erfolg bei der Hüttenbewirtschaftung!*
