@@ -98,4 +98,27 @@ Die App verfügt über eine automatische Update-Funktion via **GitHub Releases**
 - `src/renderer/src/lib`: Hilfsfunktionen für Währungsformatierung und Berechnungen.
 
 ---
-*Dokumentation Stand: April 2026*
+---
+*Dokumentation Stand: 1. Mai 2026 (v1.1.1)*
+
+## Neue Management-Module (v1.1)
+
+Seit Version 1.1 umfasst die Applikation erweiterte Module für den Hüttenbetrieb:
+
+### Zimmerbelegung
+- Verknüpft Saisons mit Zimmern.
+- Verhindert Doppelbuchungen durch visuelle Auslastungsanzeige (Basiert auf gebuchten Betten).
+- Automatische Deduplizierung der Stammdaten (Zimmer) beim Start.
+
+### Menü-Management
+- Ermöglicht das Verknüpfen externer PDF-Dateien pro Saison.
+- Fallback auf ein integriertes System-Menü (`Menue.pdf`), falls keine Verknüpfung besteht.
+- Verwendet `shell.openPath` für native PDF-Anzeige. Relative Pfade werden automatisch gegen das App-Verzeichnis aufgelöst.
+
+### Rezept-Rechner
+- Dynamische Mengenberechnung basierend auf der Personenzahl.
+- Direkte Integration in die Einkaufsliste.
+
+### To-dos & Navigation
+- Offene Aufgaben werden als Badge direkt in der Sidebar angezeigt.
+- Sidebar-Gruppen sind einklappbar, um den Fokus auf aktive Bereiche zu lenken.
