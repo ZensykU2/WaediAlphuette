@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Toaster, toast } from 'sonner'
 import AppShell from './components/Layout/AppShell'
 import Dashboard from './pages/Dashboard'
@@ -81,11 +81,24 @@ export default function App() {
     }
   }, [])
 
+  const [toastPos, setToastPos] = useState<'top-right' | 'bottom-right'>('bottom-right')
+
+  useEffect(() => {
+    const load = async () => {
+      const s = await window.api.getAppSettings()
+      if (s.toast_position) setToastPos(s.toast_position as any)
+    }
+    load()
+    // Polling for settings changes (simple sync)
+    const interval = setInterval(load, 2000)
+    return () => clearInterval(interval)
+  }, [])
+
   return (
     <>
       <Toaster 
         theme="dark" 
-        position="top-right" 
+        position={toastPos} 
         richColors 
         closeButton
         toastOptions={{

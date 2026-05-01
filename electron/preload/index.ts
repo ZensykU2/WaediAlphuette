@@ -115,7 +115,7 @@ const api = {
   getAllZimmer: () => ipcRenderer.invoke('zimmer:getAll'),
   getZimmerBelegung: (saisonId: number) => ipcRenderer.invoke('zimmer:getBelegung', saisonId),
   saveZimmerBelegung: (data: unknown) => ipcRenderer.invoke('zimmer:saveBelegung', data),
-  deleteZimmerBelegung: (id: number) => ipcRenderer.invoke('zimmer:deleteBelegung', id),
+  deleteZimmerBelegung: (id: number, deleteEinnahmeEntry: boolean) => ipcRenderer.invoke('zimmer:deleteBelegung', id, deleteEinnahmeEntry),
 
   // ── Anlässe ───────────────────────────────────────────────
   getAnlaesse: (saisonId: number) => ipcRenderer.invoke('anlaesse:get', saisonId),
@@ -125,12 +125,14 @@ const api = {
   // ── Menü ──────────────────────────────────────────────────
   getMenue: (saisonId: number) => ipcRenderer.invoke('menue:get', saisonId),
   saveMenue: (saisonId: number, pfad: string) => ipcRenderer.invoke('menue:save', saisonId, pfad),
+  deleteMenue: (saisonId: number) => ipcRenderer.invoke('menue:delete', saisonId),
 
   // ── Einkaufsliste ─────────────────────────────────────────
   getEinkaufsliste: (saisonId: number) => ipcRenderer.invoke('einkauf:get', saisonId),
   saveEinkaufsitem: (data: unknown) => ipcRenderer.invoke('einkauf:save', data),
   toggleEinkaufsitemBesorgt: (id: number) => ipcRenderer.invoke('einkauf:toggleBesorgt', id),
   deleteEinkaufsitem: (id: number) => ipcRenderer.invoke('einkauf:delete', id),
+  deleteCheckedEinkauf: (saisonId: number) => ipcRenderer.invoke('einkauf:deleteChecked', saisonId),
 
   // ── Rezepte ───────────────────────────────────────────────
   getAllRezepte: () => ipcRenderer.invoke('rezepte:getAll'),
@@ -149,6 +151,14 @@ const api = {
   getLearnings: (saisonId?: number) => ipcRenderer.invoke('learnings:get', saisonId),
   saveLearning: (data: unknown) => ipcRenderer.invoke('learnings:save', data),
   deleteLearning: (id: number) => ipcRenderer.invoke('learnings:delete', id),
+  openPath: (path: string) => ipcRenderer.invoke('shell:open', path),
+
+  // ── Settings ──────────────────────────────────────────────
+  getAppSettings: () => ipcRenderer.invoke('settings:get'),
+  setAppSetting: (key: string, value: string) => ipcRenderer.invoke('settings:set', key, value),
+
+  // ── Einkaufsliste Sync ────────────────────────────────────
+  syncEinkaufToAusgaben: (saisonId: number, data: { foodAmount?: number, drinksAmount?: number }) => ipcRenderer.invoke('einkauf:syncToAusgaben', saisonId, data),
 }
 
 if (process.contextIsolated) {

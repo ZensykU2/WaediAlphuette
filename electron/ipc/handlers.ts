@@ -1,4 +1,5 @@
-import { ipcMain, dialog } from 'electron'
+import { ipcMain, dialog, shell, app } from 'electron'
+import path from 'path'
 import {
   getAllSaisons, createSaison, updateSaison, deleteSaison,
   setActiveSaison, getEinnahmen, addEinnahme, updateEinnahme,
@@ -14,11 +15,12 @@ import {
   getEinsaetze, saveEinsatz, deleteEinsatz,
   getAllZimmer, getZimmerBelegung, saveZimmerBelegung, deleteZimmerBelegung,
   getAnlaesse, saveAnlass, deleteAnlass,
-  getMenue, saveMenue,
-  getEinkaufsliste, saveEinkaufsitem, toggleEinkaufsitemBesorgt, deleteEinkaufsitem,
+  getMenue, saveMenue, deleteMenue,
+  getEinkaufsliste, saveEinkaufsitem, toggleEinkaufsitemBesorgt, deleteEinkaufsitem, deleteCheckedEinkauf,
   getAllRezepte, saveRezept, saveRezeptZutaten, getRezeptZutaten, deleteRezept,
   getTodos, saveTodo, deleteTodo,
-  getLearnings, saveLearning, deleteLearning
+  getLearnings, saveLearning, deleteLearning,
+  getAppSettings, setAppSetting, syncEinkaufToAusgaben
 } from '../db/database'
 import { importExcel, exportExcel, exportDrinksExcel, exportDrinksWeekExcel } from '../excel/excel'
 
@@ -117,7 +119,7 @@ export function registerAllHandlers(): void {
   ipcMain.handle('zimmer:getAll',           () => getAllZimmer())
   ipcMain.handle('zimmer:getBelegung',      (_, saisonId) => getZimmerBelegung(saisonId))
   ipcMain.handle('zimmer:saveBelegung',     (_, data) => saveZimmerBelegung(data))
-  ipcMain.handle('zimmer:deleteBelegung',   (_, id) => deleteZimmerBelegung(id))
+  ipcMain.handle('zimmer:deleteBelegung',   (_, id, delEin) => deleteZimmerBelegung(id, delEin))
 
   // ── Anlässe ───────────────────────────────────────────────
   ipcMain.handle('anlaesse:get',    (_, saisonId) => getAnlaesse(saisonId))
@@ -127,12 +129,22 @@ export function registerAllHandlers(): void {
   // ── Menü ──────────────────────────────────────────────────
   ipcMain.handle('menue:get',  (_, saisonId) => getMenue(saisonId))
   ipcMain.handle('menue:save', (_, saisonId, pfad) => saveMenue(saisonId, pfad))
+  ipcMain.handle('menue:delete', async (_, saisonId) => {
+    try {
+      console.log('[IPC] menue:delete requested for:', saisonId)
+      return deleteMenue(saisonId)
+    } catch (e) {
+      console.error('[IPC] menue:delete failed:', e)
+      throw e
+    }
+  })
 
   // ── Einkaufsliste ─────────────────────────────────────────
   ipcMain.handle('einkauf:get',          (_, saisonId) => getEinkaufsliste(saisonId))
   ipcMain.handle('einkauf:save',         (_, data) => saveEinkaufsitem(data))
   ipcMain.handle('einkauf:toggleBesorgt',(_, id) => toggleEinkaufsitemBesorgt(id))
   ipcMain.handle('einkauf:delete',       (_, id) => deleteEinkaufsitem(id))
+  ipcMain.handle('einkauf:deleteChecked',(_, saisonId) => deleteCheckedEinkauf(saisonId))
 
   // ── Rezepte ───────────────────────────────────────────────
   ipcMain.handle('rezepte:getAll',      () => getAllRezepte())
@@ -150,4 +162,22 @@ export function registerAllHandlers(): void {
   ipcMain.handle('learnings:get',    (_, saisonId) => getLearnings(saisonId))
   ipcMain.handle('learnings:save',   (_, data) => saveLearning(data))
   ipcMain.handle('learnings:delete', (_, id) => deleteLearning(id))
+
+  // ── Shell ──────────────────────────────────────────────────
+  ipcMain.handle('shell:open', async (_, filePath: string) => {
+    if (!path.isAbsolute(filePath)) {
+      const resolved = app.isPackaged
+        ? path.join(process.resourcesPath, filePath)
+        : path.join(app.getAppPath(), 'src', 'renderer', 'src', 'assets', filePath)
+      return await shell.openPath(resolved)
+    }
+    return await shell.openPath(filePath)
+  })
+
+  // ── Settings ──────────────────────────────────────────────
+  ipcMain.handle('settings:get', () => getAppSettings())
+  ipcMain.handle('settings:set', (_, key, value) => setAppSetting(key, value))
+
+  // ── Einkaufsliste Sync ────────────────────────────────────
+  ipcMain.handle('einkauf:syncToAusgaben', (_, saisonId, data) => syncEinkaufToAusgaben(saisonId, data))
 }
