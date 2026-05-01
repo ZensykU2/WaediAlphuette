@@ -68,14 +68,16 @@ interface ConfirmModalProps {
   confirmLabel?: string
   danger?: boolean
   loading?: boolean
+  children?: React.ReactNode
 }
 
 export function ConfirmModal({
-  open, onClose, onConfirm, title, message, confirmLabel = 'Bestätigen', danger = false, loading = false
+  open, onClose, onConfirm, title, message, confirmLabel = 'Bestätigen', danger = false, loading = false, children
 }: ConfirmModalProps) {
   return (
     <Modal open={open} onClose={onClose} title={title} size="sm">
-      <p className="text-sm text-muted-foreground mb-6">{message}</p>
+      <p className="text-sm text-muted-foreground mb-4">{message}</p>
+      {children && <div className="mb-6">{children}</div>}
       <div className="flex gap-3 justify-end">
         <button
           onClick={onClose}

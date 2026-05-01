@@ -1,35 +1,24 @@
 import { useEffect, useState } from 'react'
 import { useActiveSaison } from '../store/saisonStore'
 import type { Zimmer, ZimmerBelegung } from '../types'
-import { formatDate, todayISO } from '../lib/utils'
-import { BedDouble, Plus, Trash2, Pencil, AlertCircle, AlertTriangle } from 'lucide-react'
-import Modal from '../components/UI/Modal'
-import { cn } from '../lib/utils'
+import { BedDouble, Plus, Trash2, Pencil, AlertCircle } from 'lucide-react'
+import Modal, { ConfirmModal } from '../components/UI/Modal'
+import { DatePicker } from '../components/UI/DatePicker'
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../components/UI/Select'
+import { cn, formatDate, todayISO } from '../lib/utils'
+import { toast } from 'sonner'
 
-const TYP_LABELS: Record<string, string> = {
-  '6er': '6er-Zimmer', '5er': '5er-Zimmer',
-  '4er': '4er-Zimmer', 'huettenwart': 'Hüttenwartszimmer'
-}
-const TYP_COLORS: Record<string, string> = {
-  '6er': 'bg-blue-900/40 text-blue-300 border-blue-700/40',
-  '5er': 'bg-purple-900/40 text-purple-300 border-purple-700/40',
-  '4er': 'bg-teal-900/40 text-teal-300 border-teal-700/40',
-  'huettenwart': 'bg-alpine-400/15 text-alpine-400 border-alpine-400/30',
-}
+const inputClass = "w-full bg-forest-800 border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-alpine-400 focus:border-alpine-400 transition-all placeholder:text-muted-foreground/30"
 
-function isOverlapping(a: ZimmerBelegung, b: ZimmerBelegung): boolean {
-  if (a.id === b.id) return false
-  if (a.zimmer_id !== b.zimmer_id) return false
-  return a.datum_von <= b.datum_bis && a.datum_bis >= b.datum_von
-}
-
-export default function Zimmer() {
+export default function ZimmerPage() {
   const activeSaison = useActiveSaison()
   const [zimmer, setZimmer] = useState<Zimmer[]>([])
   const [belegungen, setBelegungen] = useState<ZimmerBelegung[]>([])
   const [loading, setLoading] = useState(false)
   const [modal, setModal] = useState(false)
   const [editing, setEditing] = useState<Partial<ZimmerBelegung> | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<ZimmerBelegung | null>(null)
+  const [deleteWithEinnahme, setDeleteWithEinnahme] = useState(true)
 
   const load = async () => {
     if (!activeSaison) return
@@ -47,117 +36,134 @@ export default function Zimmer() {
 
   const save = async () => {
     if (!editing || !activeSaison) return
-    await window.api.saveZimmerBelegung({ ...editing, saison_id: activeSaison.id } as any)
-    setModal(false); setEditing(null); load()
-  }
-
-  const conflicts = new Set<number>()
-  for (let i = 0; i < belegungen.length; i++) {
-    for (let j = i + 1; j < belegungen.length; j++) {
-      if (isOverlapping(belegungen[i], belegungen[j])) {
-        conflicts.add(belegungen[i].id)
-        conflicts.add(belegungen[j].id)
+    
+    // Validate Dates
+    if (editing.datum_von && editing.datum_bis) {
+      if (editing.datum_von >= editing.datum_bis) {
+        toast.error('Ungültiger Zeitraum', { description: 'Das Enddatum muss nach dem Startdatum liegen (mindestens 1 Nacht).' })
+        return
       }
+    }
+
+    // Validate capacity
+    const selectedZimmer = zimmer.find(z => z.id === editing.zimmer_id)
+    if (selectedZimmer && (editing.betten || 1) > selectedZimmer.kapazitaet) {
+      toast.error('Kapazität überschritten', { description: `Dieses Zimmer hat nur ${selectedZimmer.kapazitaet} Betten.` })
+      return
+    }
+
+    try {
+      await window.api.saveZimmerBelegung({ ...editing, betten: editing.betten || 1, saison_id: activeSaison.id } as any)
+      setModal(false)
+      setEditing(null)
+      await load()
+      toast.success('Buchung gespeichert', { description: editing.id ? 'Änderungen wurden übernommen.' : 'Die neue Buchung wurde angelegt.' })
+    } catch (e) {
+      toast.error('Fehler beim Speichern')
     }
   }
 
-  if (!activeSaison) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
-        <AlertCircle className="w-12 h-12 text-muted-foreground/40" />
-        <p className="text-lg font-display font-semibold">Keine Saison aktiv</p>
-      </div>
-    )
-  }
+  if (!activeSaison) return (
+    <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
+      <AlertCircle className="w-12 h-12 text-muted-foreground/40" />
+      <p className="text-lg font-display font-semibold">Keine Saison aktiv</p>
+    </div>
+  )
 
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="page-title">Zimmer</h1>
-          <p className="text-sm text-muted-foreground mt-1">Reservation & Belegungsübersicht</p>
+          <h1 className="page-title">Zimmerbelegung</h1>
+          <p className="text-sm text-muted-foreground mt-1">Gästezimmer & Hüttenwartszimmer verwalten</p>
         </div>
-        <button onClick={() => { setEditing({ datum_von: todayISO(), datum_bis: todayISO(), typ: 'gast' }); setModal(true) }} className="btn-primary">
-          <Plus className="w-4 h-4" /> Belegung erfassen
+        <button 
+          onClick={() => { 
+            const today = new Date();
+            const tomorrow = new Date();
+            tomorrow.setDate(today.getDate() + 1);
+            const toIso = (d: Date) => d.toISOString().split('T')[0];
+            
+            setEditing({ 
+              datum_von: toIso(today), 
+              datum_bis: toIso(tomorrow), 
+              typ: 'gast' 
+            }); 
+            setModal(true) 
+          }} 
+          className="btn-primary focus:outline-none"
+        >
+          <Plus className="w-4 h-4" /> Buchung erfassen
         </button>
       </div>
 
-      {/* Zimmer stat cards */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+      {/* Zimmer Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {zimmer.map(z => {
-          const belegt = belegungen.filter(b => b.zimmer_id === z.id).length
+          const today = todayISO()
+          const count = belegungen
+            .filter(b => b.zimmer_id === z.id && b.datum_von <= today && b.datum_bis >= today)
+            .reduce((sum, b) => sum + (b.betten || 0), 0)
           return (
             <div key={z.id} className="alpine-card p-4">
-              <div className="flex items-center justify-between mb-3">
-                <span className={cn('text-xs px-2 py-0.5 rounded-full border', TYP_COLORS[z.typ])}>
-                  {TYP_LABELS[z.typ]}
-                </span>
-                <BedDouble className="w-4 h-4 text-muted-foreground" />
+              <div className="flex items-center gap-3 mb-2">
+                <div className="p-2 rounded-lg bg-alpine-400/10 text-alpine-400">
+                  <BedDouble className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="font-semibold text-foreground leading-tight">{z.name}</p>
+                  <p className="text-xs text-muted-foreground">{z.typ} · {z.kapazitaet} Betten</p>
+                </div>
               </div>
-              <p className="font-display font-semibold text-foreground">{z.name}</p>
-              <p className="text-xs text-muted-foreground mt-1">{z.kapazitaet} Plätze · {belegt} Buchungen</p>
+              <div className="mt-4 pt-4 border-t border-border/40">
+                <p className="text-xs text-muted-foreground uppercase font-medium">Aktuell belegt</p>
+                <p className="text-lg font-display font-bold text-foreground">{count} / {z.kapazitaet}</p>
+              </div>
             </div>
           )
         })}
       </div>
 
-      {/* Belegungliste */}
+      {/* Belegungsliste */}
       <div className="alpine-card overflow-hidden">
-        <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-          <h2 className="font-semibold text-sm">Belegungsplan</h2>
-          {conflicts.size > 0 && (
-            <span className="flex items-center gap-1.5 text-xs text-red-400 bg-red-900/20 border border-red-800/40 px-2 py-1 rounded">
-              <AlertTriangle className="w-3 h-3" /> {conflicts.size} Konflikte
-            </span>
-          )}
-        </div>
         {loading ? (
-          <div className="p-8 text-center text-muted-foreground text-sm">Laden…</div>
-        ) : belegungen.length === 0 ? (
-          <div className="p-8 text-center text-muted-foreground text-sm">Noch keine Belegungen erfasst.</div>
+          <div className="p-12 text-center text-muted-foreground text-sm">Laden…</div>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-muted-foreground text-xs uppercase tracking-wide">
-                <th className="px-4 py-3 text-left">Zimmer</th>
-                <th className="px-4 py-3 text-left">Gast / Helfer</th>
-                <th className="px-4 py-3 text-left">Von</th>
-                <th className="px-4 py-3 text-left">Bis</th>
-                <th className="px-4 py-3 text-left">Typ</th>
-                <th className="px-4 py-3 text-right">Aktionen</th>
+          <table className="w-full text-sm text-left border-collapse">
+            <thead className="bg-forest-800 text-muted-foreground text-xs uppercase tracking-wider">
+              <tr>
+                <th className="px-4 py-3 font-medium">Von</th>
+                <th className="px-4 py-3 font-medium">Bis</th>
+                <th className="px-4 py-3 font-medium">Zimmer</th>
+                <th className="px-4 py-3 font-medium">Betten</th>
+                <th className="px-4 py-3 font-medium">Gast / Helfer</th>
+                <th className="px-4 py-3 font-medium text-right">Aktionen</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-border/40">
+              {belegungen.length === 0 && (
+                <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground italic">Keine Buchungen vorhanden</td></tr>
+              )}
               {belegungen.map(b => (
-                <tr key={b.id} className={cn(
-                  'border-b border-border/50 hover:bg-forest-800/50 transition-colors',
-                  conflicts.has(b.id) && 'bg-red-900/10'
-                )}>
+                <tr key={b.id} className="hover:bg-forest-800/30 transition-colors group">
+                  <td className="px-4 py-3 whitespace-nowrap">{formatDate(b.datum_von)}</td>
+                  <td className="px-4 py-3 whitespace-nowrap">{formatDate(b.datum_bis)}</td>
+                  <td className="px-4 py-3 font-medium text-foreground">{b.zimmer_name}</td>
+                  <td className="px-4 py-3 text-muted-foreground font-medium">{b.betten || 1}</td>
                   <td className="px-4 py-3">
-                    <span className={cn('text-xs px-2 py-0.5 rounded-full border', TYP_COLORS[b.zimmer_typ ?? '6er'])}>
-                      {b.zimmer_name}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 font-medium">
-                    {conflicts.has(b.id) && <AlertTriangle className="w-3 h-3 text-red-400 inline mr-1" />}
-                    {b.gast_name}
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">{formatDate(b.datum_von)}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{formatDate(b.datum_bis)}</td>
-                  <td className="px-4 py-3">
-                    <span className={cn('text-xs px-2 py-0.5 rounded-full border',
-                      b.typ === 'gast' ? 'badge-verein' : 'bg-orange-900/40 text-orange-300 border-orange-700/40')}>
-                      {b.typ === 'gast' ? 'Gast' : 'Helfer'}
+                    <span className="text-foreground">{b.gast_name}</span>
+                    <span className={cn('ml-2 text-[10px] uppercase px-1.5 py-0.5 rounded border',
+                      b.typ === 'helfer' ? 'bg-alpine-400/10 text-alpine-400 border-alpine-400/20' : 'bg-forest-700 text-muted-foreground border-border'
+                    )}>
+                      {b.typ}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <button onClick={() => { setEditing(b); setModal(true) }}
-                        className="p-1.5 rounded hover:bg-forest-700 text-muted-foreground hover:text-foreground transition-colors">
+                    <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => { setEditing(b); setModal(true) }} className="p-1.5 rounded hover:bg-forest-700 text-muted-foreground transition-colors">
                         <Pencil className="w-3.5 h-3.5" />
                       </button>
-                      <button onClick={async () => { await window.api.deleteZimmerBelegung(b.id); load() }}
-                        className="p-1.5 rounded hover:bg-red-900/40 text-muted-foreground hover:text-red-400 transition-colors">
+                      <button onClick={() => { setDeleteTarget(b); setDeleteWithEinnahme(!!b.einnahme_id) }} className="p-1.5 rounded hover:bg-red-900/40 text-muted-foreground hover:text-red-400 transition-colors">
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -169,61 +175,94 @@ export default function Zimmer() {
         )}
       </div>
 
-      <Modal open={modal} onClose={() => { setModal(false); setEditing(null) }}
-        title={editing?.id ? 'Belegung bearbeiten' : 'Neue Belegung'}>
+      <Modal open={modal} onClose={() => { setModal(false); setEditing(null) }} title={editing?.id ? 'Buchung bearbeiten' : 'Neue Buchung'}>
         {editing && (
           <div className="space-y-4">
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Zimmer *</label>
-              <select className="w-full bg-forest-800 border border-border rounded-md px-3 py-2 text-sm text-foreground"
-                value={editing.zimmer_id ?? ''}
-                onChange={e => setEditing(prev => ({ ...prev, zimmer_id: Number(e.target.value) }))}>
-                <option value="">Zimmer wählen…</option>
-                {zimmer.map(z => <option key={z.id} value={z.id}>{z.name} ({z.typ}, {z.kapazitaet} Plätze)</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Gast / Helfer Name *</label>
-              <input className="w-full bg-forest-800 border border-border rounded-md px-3 py-2 text-sm text-foreground"
-                value={editing.gast_name ?? ''}
-                onChange={e => setEditing(prev => ({ ...prev, gast_name: e.target.value }))} />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Von *</label>
-                <input type="date" className="w-full bg-forest-800 border border-border rounded-md px-3 py-2 text-sm text-foreground"
-                  value={editing.datum_von ?? todayISO()}
-                  onChange={e => setEditing(prev => ({ ...prev, datum_von: e.target.value }))} />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground uppercase mb-1 block">Zimmer *</label>
+                <Select value={editing.zimmer_id?.toString() ?? ""} onValueChange={v => setEditing(p => ({ ...p, zimmer_id: Number(v) }))}>
+                  <SelectTrigger className="w-full"><SelectValue placeholder="Wählen..." /></SelectTrigger>
+                  <SelectContent>{zimmer.map(z => <SelectItem key={z.id} value={z.id.toString()}>{z.name} ({z.typ})</SelectItem>)}</SelectContent>
+                </Select>
               </div>
-              <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Bis *</label>
-                <input type="date" className="w-full bg-forest-800 border border-border rounded-md px-3 py-2 text-sm text-foreground"
-                  value={editing.datum_bis ?? todayISO()}
-                  onChange={e => setEditing(prev => ({ ...prev, datum_bis: e.target.value }))} />
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground uppercase mb-1 block">Betten / Personen *</label>
+                <input 
+                  type="number" 
+                  min={1} 
+                  max={zimmer.find(z => z.id === editing.zimmer_id)?.kapazitaet || 10}
+                  className={inputClass} 
+                  value={editing.betten ?? 1} 
+                  onChange={e => setEditing(p => ({ ...p, betten: Number(e.target.value) }))} 
+                />
               </div>
             </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Typ</label>
-              <select className="w-full bg-forest-800 border border-border rounded-md px-3 py-2 text-sm text-foreground"
-                value={editing.typ ?? 'gast'}
-                onChange={e => setEditing(prev => ({ ...prev, typ: e.target.value as 'gast' | 'helfer' }))}>
-                <option value="gast">Gast</option>
-                <option value="helfer">Helfer</option>
-              </select>
+            <div className="grid grid-cols-2 gap-4">
+              <DatePicker label="Von *" value={editing.datum_von} onChange={e => setEditing(p => ({ ...p, datum_von: e.target.value }))} />
+              <DatePicker label="Bis *" value={editing.datum_bis} onChange={e => setEditing(p => ({ ...p, datum_bis: e.target.value }))} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground uppercase mb-1 block">Gast / Name *</label>
+                <input className={inputClass} placeholder="Name eingeben" value={editing.gast_name ?? ''} onChange={e => setEditing(p => ({ ...p, gast_name: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground uppercase mb-1 block">Typ</label>
+                <Select value={editing.typ ?? 'gast'} onValueChange={v => setEditing(p => ({ ...p, typ: v as any }))}>
+                  <SelectTrigger className="w-full"><SelectValue placeholder="Typ wählen" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="gast">Gast</SelectItem>
+                    <SelectItem value="helfer">Helfer</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Notiz</label>
-              <textarea className="w-full bg-forest-800 border border-border rounded-md px-3 py-2 text-sm text-foreground resize-none" rows={2}
-                value={editing.notiz ?? ''}
-                onChange={e => setEditing(prev => ({ ...prev, notiz: e.target.value }))} />
+              <label className="text-xs font-medium text-muted-foreground uppercase mb-1 block">Notiz</label>
+              <textarea className={cn(inputClass, "resize-none")} rows={2} value={editing.notiz ?? ''} onChange={e => setEditing(p => ({ ...p, notiz: e.target.value }))} />
             </div>
-            <div className="flex gap-2 justify-end pt-2">
+            <div className="flex gap-2 justify-end pt-4 border-t border-border/40 mt-6">
               <button onClick={() => { setModal(false); setEditing(null) }} className="btn-secondary text-sm">Abbrechen</button>
               <button onClick={save} className="btn-primary text-sm">Speichern</button>
             </div>
           </div>
         )}
       </Modal>
+
+      <ConfirmModal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        title="Buchung löschen"
+        message={`Möchtest du die Buchung für "${deleteTarget?.gast_name}" wirklich löschen?`}
+        confirmLabel="Löschen"
+        danger
+        onConfirm={async () => {
+          if (!deleteTarget) return
+          try {
+            await (window.api as any).deleteZimmerBelegung(deleteTarget.id, deleteWithEinnahme)
+            await load()
+            toast.success('Buchung gelöscht')
+          } catch (e) {
+            toast.error('Fehler beim Löschen')
+          }
+        }}
+      >
+        {!!deleteTarget?.einnahme_id && (
+          <label className="flex items-center gap-2 cursor-pointer p-3 bg-red-900/10 rounded border border-red-900/20 mt-2">
+            <input 
+              type="checkbox" 
+              className="accent-red-600 w-4 h-4" 
+              checked={deleteWithEinnahme} 
+              onChange={e => setDeleteWithEinnahme(e.target.checked)} 
+            />
+            <div className="text-sm">
+              <p className="font-medium text-red-200">Verknüpfte Einnahme ebenfalls löschen</p>
+              <p className="text-xs text-red-200/60">Dies entfernt auch den entsprechenden Eintrag in der Buchhaltung.</p>
+            </div>
+          </label>
+        )}
+      </ConfirmModal>
     </div>
   )
 }

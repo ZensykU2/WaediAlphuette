@@ -28,7 +28,8 @@ export function kategorieLabelEinnahme(kat: string): string {
   const map: Record<string, string> = {
     speisen: 'Speisen',
     getraenke: 'Getränke',
-    uebernachtung: 'Übernachtung'
+    uebernachtung: 'Übernachtung',
+    kegelbahn: 'Kegelbahn'
   }
   return map[kat] ?? kat
 }

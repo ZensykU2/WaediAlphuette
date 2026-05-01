@@ -9,7 +9,7 @@ import { formatCHF, formatDate, todayISO, kategorieLabelEinnahme, calcGetraenkeA
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/UI/Select'
 import { DatePicker } from '../components/UI/DatePicker'
 
-const KATEGORIEN: EinnahmeKategorie[] = ['speisen', 'getraenke', 'uebernachtung']
+const KATEGORIEN: EinnahmeKategorie[] = ['speisen', 'getraenke', 'uebernachtung', 'kegelbahn']
 
 const emptyForm = {
   datum: todayISO(),
@@ -253,7 +253,9 @@ export default function Einnahmen() {
         onClose={() => setDeleteTarget(null)}
         onConfirm={doDelete}
         title="Einnahme löschen"
-        message={`Möchtest du die Einnahme vom ${formatDate(deleteTarget?.datum ?? '')} (${formatCHF(deleteTarget?.brutto ?? 0)}) wirklich löschen?`}
+        message={deleteTarget?.zimmer_belegung_id 
+          ? `Möchtest du diese Einnahme wirklich löschen? ACHTUNG: Die verknüpfte Zimmerbuchung wird ebenfalls gelöscht.` 
+          : `Möchtest du die Einnahme vom ${formatDate(deleteTarget?.datum ?? '')} (${formatCHF(deleteTarget?.brutto ?? 0)}) wirklich löschen?`}
         confirmLabel="Löschen"
         danger
       />

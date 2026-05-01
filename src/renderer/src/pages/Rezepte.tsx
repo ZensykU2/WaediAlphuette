@@ -1,31 +1,42 @@
 import { useEffect, useState } from 'react'
 import type { Rezept, RezeptZutat } from '../types'
 import { BookOpen, Plus, Trash2, Pencil, Clock, Users, ChevronRight, X, ShoppingCart } from 'lucide-react'
-import Modal from '../components/UI/Modal'
+import Modal, { ConfirmModal } from '../components/UI/Modal'
 import { cn } from '../lib/utils'
 import { useActiveSaison } from '../store/saisonStore'
+import { toast } from 'sonner'
 
 interface RezeptWithZutaten extends Rezept { zutaten: RezeptZutat[] }
+
+const inputClass = "w-full bg-forest-800 border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-alpine-400 focus:border-alpine-400 transition-all placeholder:text-muted-foreground/30"
 
 export default function Rezepte() {
   const activeSaison = useActiveSaison()
   const [rezepte, setRezepte] = useState<RezeptWithZutaten[]>([])
   const [selected, setSelected] = useState<RezeptWithZutaten | null>(null)
+  const [loading, setLoading] = useState(false)
   const [modal, setModal] = useState(false)
   const [editing, setEditing] = useState<Partial<Rezept> | null>(null)
   const [zutaten, setZutaten] = useState<Partial<RezeptZutat>[]>([])
   const [personenFaktor, setPersonenFaktor] = useState(1)
-  const [einkaufMsg, setEinkaufMsg] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<Rezept | null>(null)
 
   const load = async () => {
-    const data = await window.api.getAllRezepte() as Rezept[]
-    const withZ = await Promise.all(data.map(async r => ({
-      ...r, zutaten: await window.api.getRezeptZutaten(r.id) as RezeptZutat[]
-    })))
-    setRezepte(withZ)
-    if (selected) {
-      const updated = withZ.find(r => r.id === selected.id)
-      if (updated) setSelected(updated)
+    setLoading(true)
+    try {
+      const data = await window.api.getAllRezepte() as Rezept[]
+      const withZ = await Promise.all(data.map(async r => ({
+        ...r, zutaten: await window.api.getRezeptZutaten(r.id) as RezeptZutat[]
+      })))
+      setRezepte(withZ)
+      if (selected) {
+        const updated = withZ.find(r => r.id === selected.id)
+        if (updated) setSelected(updated)
+      }
+    } catch (e) {
+      console.error('Failed to load recipes:', e)
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -44,27 +55,48 @@ export default function Rezepte() {
   }
 
   const save = async () => {
-    if (!editing) return
-    const saved = await window.api.saveRezept(editing as any) as Rezept
-    const validZutaten = zutaten.filter(z => z.artikel?.trim())
-    await window.api.saveRezeptZutaten(saved.id, validZutaten as RezeptZutat[])
-    setModal(false); setEditing(null); load()
+    if (!editing || !editing.titel?.trim()) return
+    try {
+      const saved = await window.api.saveRezept(editing as any) as Rezept
+      const validZutaten = zutaten.filter(z => z.artikel?.trim())
+      await window.api.saveRezeptZutaten(saved.id, validZutaten as RezeptZutat[])
+      setModal(false); setEditing(null); load()
+      toast.success('Rezept gespeichert')
+    } catch (e) {
+      toast.error('Fehler beim Speichern')
+    }
   }
 
   const addToEinkauf = async () => {
     if (!selected || !activeSaison) return
     const faktor = personenFaktor / (selected.basis_personen || 1)
-    for (const z of selected.zutaten) {
-      await window.api.saveEinkaufsitem({
-        saison_id: activeSaison.id,
-        kategorie: 'lebensmittel',
-        artikel: z.artikel,
-        menge: Math.round(z.menge * faktor * 100) / 100,
-        einheit: z.einheit,
-      } as any)
+    try {
+      for (const z of selected.zutaten) {
+        await window.api.saveEinkaufsitem({
+          saison_id: activeSaison.id,
+          kategorie: 'lebensmittel',
+          artikel: z.artikel,
+          menge: Math.round(z.menge * faktor * 100) / 100,
+          einheit: z.einheit,
+        } as any)
+      }
+      toast.success('Zur Einkaufsliste hinzugefügt')
+    } catch (e) {
+      toast.error('Fehler beim Hinzufügen')
     }
-    setEinkaufMsg(`${selected.zutaten.length} Zutaten zur Einkaufsliste hinzugefügt!`)
-    setTimeout(() => setEinkaufMsg(null), 3000)
+  }
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return
+    try {
+      await window.api.deleteRezept(deleteTarget.id)
+      setDeleteTarget(null)
+      load()
+      if (selected?.id === deleteTarget.id) setSelected(null)
+      toast.success('Rezept gelöscht')
+    } catch (e) {
+      toast.error('Fehler beim Löschen')
+    }
   }
 
   return (
@@ -74,15 +106,15 @@ export default function Rezepte() {
           <h1 className="page-title">Rezepte</h1>
           <p className="text-sm text-muted-foreground mt-1">Standardisierte Rezepte mit Mengenrechner</p>
         </div>
-        <button onClick={openNew} className="btn-primary">
+        <button onClick={openNew} className="btn-primary focus:outline-none">
           <Plus className="w-4 h-4" /> Neues Rezept
         </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4 h-[calc(100vh-13rem)]">
-        {/* List panel */}
         <div className="alpine-card overflow-y-auto">
-          {rezepte.length === 0 && (
+          {loading && <div className="p-8 text-center text-muted-foreground text-sm">Laden…</div>}
+          {!loading && rezepte.length === 0 && (
             <div className="p-8 text-center text-muted-foreground text-sm">Noch keine Rezepte.</div>
           )}
           {rezepte.map(r => (
@@ -103,7 +135,6 @@ export default function Rezepte() {
           ))}
         </div>
 
-        {/* Detail panel */}
         {selected ? (
           <div className="alpine-card overflow-y-auto p-6 space-y-6">
             <div className="flex items-start justify-between">
@@ -119,23 +150,20 @@ export default function Rezepte() {
                   className="p-1.5 rounded hover:bg-forest-700 text-muted-foreground hover:text-foreground transition-colors">
                   <Pencil className="w-4 h-4" />
                 </button>
-                <button onClick={async () => { await window.api.deleteRezept(selected.id); setSelected(null); load() }}
-                  className="p-1.5 rounded hover:bg-red-900/40 text-muted-foreground hover:text-red-400 transition-colors">
+                <button onClick={() => setDeleteTarget(selected)} className="p-1.5 rounded hover:bg-red-900/40 text-muted-foreground hover:text-red-400 transition-colors">
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>
             </div>
 
-            {/* Scaling calculator */}
             <div className="bg-forest-800 rounded-lg p-4 border border-border">
               <div className="flex items-center justify-between mb-3">
                 <p className="text-sm font-medium">Mengenrechner</p>
-                {einkaufMsg && <p className="text-xs text-emerald-400">{einkaufMsg}</p>}
               </div>
               <div className="flex items-center gap-3">
                 <label className="text-xs text-muted-foreground">Personen:</label>
                 <input type="number" min={1} step={1}
-                  className="w-24 bg-forest-900 border border-border rounded-md px-3 py-1.5 text-sm text-foreground"
+                  className="w-24 bg-forest-900 border border-border rounded-md px-3 py-1.5 text-sm text-foreground focus:ring-1 focus:ring-alpine-400 outline-none"
                   value={personenFaktor}
                   onChange={e => setPersonenFaktor(Math.max(1, Number(e.target.value)))} />
                 <span className="text-xs text-muted-foreground">(Basis: {selected.basis_personen})</span>
@@ -147,7 +175,6 @@ export default function Rezepte() {
               </div>
             </div>
 
-            {/* Ingredients */}
             {selected.zutaten.length > 0 && (
               <div>
                 <h3 className="text-sm font-semibold mb-3">Zutaten</h3>
@@ -167,17 +194,10 @@ export default function Rezepte() {
               </div>
             )}
 
-            {/* Zubereitung */}
             {selected.zubereitung && (
               <div>
                 <h3 className="text-sm font-semibold mb-2">Zubereitung</h3>
                 <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">{selected.zubereitung}</p>
-              </div>
-            )}
-
-            {selected.notiz && (
-              <div className="bg-alpine-400/5 border border-alpine-400/20 rounded-lg p-4">
-                <p className="text-xs text-muted-foreground">{selected.notiz}</p>
               </div>
             )}
           </div>
@@ -191,34 +211,30 @@ export default function Rezepte() {
         )}
       </div>
 
-      {/* Edit Modal */}
-      <Modal open={modal} onClose={() => { setModal(false); setEditing(null) }}
-        title={editing?.id ? 'Rezept bearbeiten' : 'Neuer Rezept'}>
+      <Modal open={modal} onClose={() => { setModal(false); setEditing(null) }} title={editing?.id ? 'Rezept bearbeiten' : 'Neues Rezept'}>
         {editing && (
-          <div className="space-y-4">
+          <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Titel *</label>
-              <input className="w-full bg-forest-800 border border-border rounded-md px-3 py-2 text-sm text-foreground"
-                value={editing.titel ?? ''}
-                onChange={e => setEditing(p => ({ ...p, titel: e.target.value }))} />
+              <label className="text-xs font-medium text-muted-foreground uppercase mb-1 block">Titel *</label>
+              <input className={inputClass} value={editing.titel ?? ''} onChange={e => setEditing(p => ({ ...p, titel: e.target.value }))} />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Basis Personen *</label>
-                <input type="number" min={1} className="w-full bg-forest-800 border border-border rounded-md px-3 py-2 text-sm text-foreground"
+                <label className="text-xs font-medium text-muted-foreground uppercase mb-1 block">Basis Personen *</label>
+                <input type="number" min={1} className={inputClass}
                   value={editing.basis_personen ?? 4}
                   onChange={e => setEditing(p => ({ ...p, basis_personen: Number(e.target.value) }))} />
               </div>
               <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Zeitaufwand (Min.)</label>
-                <input type="number" min={0} className="w-full bg-forest-800 border border-border rounded-md px-3 py-2 text-sm text-foreground"
+                <label className="text-xs font-medium text-muted-foreground uppercase mb-1 block">Zeitaufwand (Min.)</label>
+                <input type="number" min={0} className={inputClass}
                   value={editing.zeitaufwand_min ?? ''}
                   onChange={e => setEditing(p => ({ ...p, zeitaufwand_min: e.target.value ? Number(e.target.value) : undefined }))} />
               </div>
             </div>
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-xs text-muted-foreground">Zutaten</label>
+                <label className="text-xs font-medium text-muted-foreground uppercase block">Zutaten</label>
                 <button type="button" onClick={() => setZutaten(p => [...p, { artikel: '', menge: 0, einheit: '' }])}
                   className="text-xs text-alpine-400 hover:underline">+ Zutat</button>
               </div>
@@ -226,44 +242,46 @@ export default function Rezepte() {
                 {zutaten.map((z, idx) => (
                   <div key={idx} className="flex gap-2">
                     <input type="number" step="0.1" placeholder="Menge"
-                      className="w-20 shrink-0 bg-forest-800 border border-border rounded-md px-2 py-1.5 text-sm text-foreground"
-                      value={z.menge ?? ''}
+                      className={cn(inputClass, "w-20 shrink-0")}
+                      value={z.menge || ''}
                       onChange={e => setZutaten(p => p.map((x, i) => i === idx ? { ...x, menge: Number(e.target.value) } : x))} />
                     <input placeholder="Einheit"
-                      className="w-20 shrink-0 bg-forest-800 border border-border rounded-md px-2 py-1.5 text-sm text-foreground"
+                      className={cn(inputClass, "w-20 shrink-0")}
                       value={z.einheit ?? ''}
                       onChange={e => setZutaten(p => p.map((x, i) => i === idx ? { ...x, einheit: e.target.value } : x))} />
                     <input placeholder="Artikel"
-                      className="flex-1 bg-forest-800 border border-border rounded-md px-2 py-1.5 text-sm text-foreground"
+                      className={cn(inputClass, "flex-1")}
                       value={z.artikel ?? ''}
                       onChange={e => setZutaten(p => p.map((x, i) => i === idx ? { ...x, artikel: e.target.value } : x))} />
                     <button type="button" onClick={() => setZutaten(p => p.filter((_, i) => i !== idx))}
-                      className="p-1 text-muted-foreground hover:text-red-400">
-                      <X className="w-3.5 h-3.5" />
+                      className="p-2 text-muted-foreground hover:text-red-400 transition-colors">
+                      <X className="w-4 h-4" />
                     </button>
                   </div>
                 ))}
               </div>
             </div>
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Zubereitung</label>
-              <textarea className="w-full bg-forest-800 border border-border rounded-md px-3 py-2 text-sm text-foreground resize-none" rows={4}
+              <label className="text-xs font-medium text-muted-foreground uppercase mb-1 block">Zubereitung</label>
+              <textarea className={cn(inputClass, "resize-none")} rows={4}
                 value={editing.zubereitung ?? ''}
                 onChange={e => setEditing(p => ({ ...p, zubereitung: e.target.value }))} />
             </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Notiz</label>
-              <input className="w-full bg-forest-800 border border-border rounded-md px-3 py-2 text-sm text-foreground"
-                value={editing.notiz ?? ''}
-                onChange={e => setEditing(p => ({ ...p, notiz: e.target.value }))} />
-            </div>
-            <div className="flex gap-2 justify-end pt-2">
+            <div className="flex gap-2 justify-end pt-4 border-t border-border/40 mt-6">
               <button onClick={() => { setModal(false); setEditing(null) }} className="btn-secondary text-sm">Abbrechen</button>
               <button onClick={save} className="btn-primary text-sm">Speichern</button>
             </div>
           </div>
         )}
       </Modal>
+
+      <ConfirmModal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+        title="Rezept löschen"
+        message={`Möchtest du das Rezept "${deleteTarget?.titel}" wirklich unwiderruflich löschen?`}
+      />
     </div>
   )
 }

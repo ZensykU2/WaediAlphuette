@@ -1,6 +1,6 @@
 // Shared TypeScript types for the Wädi Alphütte app
 
-export type EinnahmeKategorie = 'speisen' | 'getraenke' | 'uebernachtung'
+export type EinnahmeKategorie = 'speisen' | 'getraenke' | 'uebernachtung' | 'kegelbahn'
 export type AusgabeKategorie = 'lebensmittel' | 'dekoration' | 'anschaffung' | 'sonstiges'
 export type Traeger = 'privat' | 'verein'
 
@@ -11,6 +11,8 @@ export interface Saison {
   start_datum?: string
   end_datum?: string
   is_active: 0 | 1
+  uebernachtung_preis: number
+  kegelbahn_split_privat: number
   erstellt_am: string
 }
 
@@ -23,6 +25,7 @@ export interface Einnahme {
   anteil_privat: number
   anteil_verein: number
   notiz?: string
+  zimmer_belegung_id?: number
   erstellt_am: string
 }
 
@@ -147,8 +150,11 @@ export interface HelferEinsatz {
   aufgabe: string
   schicht?: string
   uebernachtung: 0 | 1
+  uebernachtung_von?: string
+  uebernachtung_bis?: string
   zimmer_id?: number
   zimmer_name?: string
+  zimmer_belegung_id?: number
   notiz?: string
   erstellt_am: string
 }
@@ -173,6 +179,8 @@ export interface ZimmerBelegung {
   datum_bis: string
   gast_name: string
   typ: 'gast' | 'helfer'
+  betten: number
+  einnahme_id?: number
   notiz?: string
   erstellt_am: string
 }
@@ -190,8 +198,10 @@ export interface Anlass {
   typ: AnlassTyp
   kegelbahn: 0 | 1
   preis_pro_stunde?: number
+  stunden: number
   notiz?: string
   status: AnlassStatus
+  einnahme_id?: number
   erstellt_am: string
 }
 
@@ -300,6 +310,7 @@ export interface WaediApi {
   openFileDialog: () => Promise<string | null>
   saveFileDialog: (defaultName: string) => Promise<string | null>
   openPdfDialog: () => Promise<string | null>
+  openPath: (path: string) => Promise<void>
   // Window Controls
   minimize: () => void
   maximize: () => void
@@ -322,7 +333,7 @@ export interface WaediApi {
   getAllZimmer: () => Promise<Zimmer[]>
   getZimmerBelegung: (saisonId: number) => Promise<ZimmerBelegung[]>
   saveZimmerBelegung: (data: Partial<ZimmerBelegung>) => Promise<ZimmerBelegung>
-  deleteZimmerBelegung: (id: number) => Promise<void>
+  deleteZimmerBelegung: (id: number, deleteEinnahmeEntry?: boolean) => Promise<void>
   // Anlässe
   getAnlaesse: (saisonId: number) => Promise<Anlass[]>
   saveAnlass: (data: Partial<Anlass>) => Promise<Anlass>
@@ -330,11 +341,13 @@ export interface WaediApi {
   // Menü
   getMenue: (saisonId: number) => Promise<Menue | undefined>
   saveMenue: (saisonId: number, pfad: string) => Promise<Menue>
+  deleteMenue: (saisonId: number) => Promise<void>
   // Einkaufsliste
   getEinkaufsliste: (saisonId: number) => Promise<Einkaufsitem[]>
   saveEinkaufsitem: (data: Partial<Einkaufsitem>) => Promise<Einkaufsitem>
   toggleEinkaufsitemBesorgt: (id: number) => Promise<Einkaufsitem>
   deleteEinkaufsitem: (id: number) => Promise<void>
+  deleteCheckedEinkauf: (saisonId: number) => Promise<void>
   // Rezepte
   getAllRezepte: () => Promise<Rezept[]>
   saveRezept: (data: Partial<Rezept>) => Promise<Rezept>
@@ -349,4 +362,9 @@ export interface WaediApi {
   getLearnings: (saisonId?: number) => Promise<Learning[]>
   saveLearning: (data: Partial<Learning>) => Promise<Learning>
   deleteLearning: (id: number) => Promise<void>
+  // Settings
+  getAppSettings: () => Promise<Record<string, string>>
+  setAppSetting: (key: string, value: string) => Promise<void>
+  // Einkaufsliste Sync
+  syncEinkaufToAusgaben: (saisonId: number, data: { foodAmount?: number, drinksAmount?: number }) => Promise<number>
 }

@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useActiveSaison } from '../store/saisonStore'
 import type { Menue as MenueType } from '../types'
-import { UtensilsCrossed, FileText, Upload, ExternalLink, AlertCircle, RefreshCw } from 'lucide-react'
+import { UtensilsCrossed, FileText, Upload, ExternalLink, AlertCircle, Trash2 } from 'lucide-react'
 import { formatDate } from '../lib/utils'
+import { toast } from 'sonner'
 
 // The bundled default menu PDF shipped with the app
 // In production it lives next to the executable; in dev it's in src/renderer/src/assets/
@@ -13,6 +14,7 @@ export default function MenuePage() {
   const [menue, setMenue] = useState<MenueType | null>(null)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   const load = async () => {
     if (!activeSaison) return
@@ -27,9 +29,12 @@ export default function MenuePage() {
   const openPdf = async (pfad?: string) => {
     const path = pfad ?? menue?.pfad
     if (!path) return
-    // Use the Electron shell to open the file in the OS default PDF viewer
-    if (window.electron?.shell?.openPath) {
-      window.electron.shell.openPath(path)
+    try {
+      await window.api.openPath(path)
+    } catch (e) {
+      toast.error('PDF konnte nicht geöffnet werden', {
+        description: 'Möglicherweise wurde die Datei verschoben oder gelöscht.'
+      })
     }
   }
 
@@ -38,19 +43,30 @@ export default function MenuePage() {
     const pfad = await window.api.openPdfDialog()
     if (!pfad) return
     setSaving(true)
-    await window.api.saveMenue(activeSaison.id, pfad)
-    await load()
-    setSaving(false)
+    try {
+      await window.api.saveMenue(activeSaison.id, pfad)
+      await load()
+      toast.success('Menü verknüpft', { description: 'Das neue PDF wurde erfolgreich gespeichert.' })
+    } catch (e) {
+      toast.error('Fehler beim Speichern')
+    } finally {
+      setSaving(false)
+    }
   }
 
-  const setDefault = async () => {
+  const handleDisconnect = async () => {
     if (!activeSaison) return
-    setSaving(true)
-    // Resolve path to the bundled asset
-    const assetPath = `${window.location.pathname.replace('/index.html', '')}/assets/${DEFAULT_MENUE_PATH}`
-    await window.api.saveMenue(activeSaison.id, DEFAULT_MENUE_PATH)
-    await load()
-    setSaving(false)
+    setDeleting(true)
+    try {
+      await window.api.deleteMenue(activeSaison.id)
+      await load()
+      toast.success('Verknüpfung gelöst', { description: 'Das System nutzt nun wieder das Standard-Menü.' })
+    } catch (e) {
+      console.error('Failed to disconnect menu:', e)
+      toast.error('Fehler beim Löschen')
+    } finally {
+      setDeleting(false)
+    }
   }
 
   if (!activeSaison) {
@@ -84,7 +100,7 @@ export default function MenuePage() {
                   {menue.pfad.split(/[/\\]/).pop()}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Verknüpft am {formatDate(menue.hochgeladen_am.split('T')[0])}
+                  Verknüpft am {formatDate(menue.hochgeladen_am.substring(0, 10))}
                 </p>
                 <p className="text-xs text-muted-foreground/70 mt-0.5 truncate font-mono">{menue.pfad}</p>
               </>
@@ -92,7 +108,7 @@ export default function MenuePage() {
               <>
                 <p className="font-semibold text-foreground">Kein Menü hinterlegt</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Verknüpfe das aktuelle Menü oder setze das Standard-Menü (Menue.pdf).
+                  Verknüpfe das aktuelle Menü oder nutze das Standard-System-Menü.
                 </p>
               </>
             )}
@@ -100,19 +116,28 @@ export default function MenuePage() {
         </div>
 
         <div className="flex gap-3 mt-6 pt-5 border-t border-border flex-wrap">
-          {menue && (
-            <button onClick={() => openPdf()} className="btn-primary">
-              <ExternalLink className="w-4 h-4" /> Menü öffnen
-            </button>
-          )}
-          <button onClick={selectNewPdf} disabled={saving} className="btn-secondary">
+          <button 
+            onClick={() => openPdf(menue?.pfad ?? DEFAULT_MENUE_PATH)} 
+            className="btn-primary focus:outline-none"
+            disabled={loading}
+          >
+            <ExternalLink className="w-4 h-4" /> 
+            {menue ? 'Menü öffnen' : 'System-Menü öffnen'}
+          </button>
+          
+          <button onClick={selectNewPdf} disabled={saving || deleting} className="btn-secondary focus:outline-none">
             <Upload className="w-4 h-4" />
             {saving ? 'Speichern…' : 'Anderes PDF wählen'}
           </button>
-          {!menue && (
-            <button onClick={setDefault} disabled={saving} className="btn-secondary">
-              <RefreshCw className="w-4 h-4" />
-              Standard-Menü verwenden
+
+          {menue && (
+            <button 
+              onClick={handleDisconnect} 
+              disabled={deleting || saving} 
+              className="btn-secondary text-red-400 hover:text-red-300 border-red-900/30 hover:bg-red-900/20 focus:outline-none"
+            >
+              <Trash2 className="w-4 h-4" />
+              {deleting ? 'Lösche...' : 'Verknüpfung lösen'}
             </button>
           )}
         </div>

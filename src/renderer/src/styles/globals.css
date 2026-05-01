@@ -147,12 +147,12 @@
 
   /* Standard Buttons */
   .btn-primary {
-    @apply flex items-center justify-center gap-2 px-4 py-2 rounded-md bg-alpine-400 text-alpine-900 font-bold shadow-sm transition-all hover:bg-alpine-500 disabled:opacity-50 active:scale-95;
+    @apply flex items-center justify-center gap-2 px-4 py-2 rounded-md bg-alpine-400 text-alpine-900 font-bold shadow-sm transition-all hover:bg-alpine-500 disabled:opacity-50 active:scale-95 focus:outline-none;
   }
   .btn-secondary {
-    @apply flex items-center justify-center gap-2 px-4 py-2 rounded-md bg-forest-700 text-foreground font-medium border border-border transition-all hover:bg-forest-600 active:scale-95;
+    @apply flex items-center justify-center gap-2 px-4 py-2 rounded-md bg-forest-700 text-foreground font-medium border border-border transition-all hover:bg-forest-600 active:scale-95 focus:outline-none;
   }
   .btn-danger {
-    @apply flex items-center justify-center gap-2 px-4 py-2 rounded-md bg-red-900/40 text-red-100 border border-red-800/50 transition-all hover:bg-red-800/60 active:scale-95 text-sm;
+    @apply flex items-center justify-center gap-2 px-4 py-2 rounded-md bg-red-900/40 text-red-100 border border-red-800/50 transition-all hover:bg-red-800/60 active:scale-95 text-sm focus:outline-none;
   }
 }

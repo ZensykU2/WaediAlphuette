@@ -1,6 +1,6 @@
 import { cn } from '../../lib/utils'
 
-type BadgeVariant = 'verein' | 'privat' | 'speisen' | 'getraenke' | 'uebernachtung' |
+type BadgeVariant = 'verein' | 'privat' | 'speisen' | 'getraenke' | 'uebernachtung' | 'kegelbahn' |
                    'lebensmittel' | 'dekoration' | 'anschaffung' | 'sonstiges' | 'default'
 
 const variantClasses: Record<BadgeVariant, string> = {
@@ -13,12 +13,14 @@ const variantClasses: Record<BadgeVariant, string> = {
   dekoration:    'bg-pink-950/60 text-pink-300 border-pink-700/50',
   anschaffung:   'bg-indigo-950/60 text-indigo-300 border-indigo-700/50',
   sonstiges:     'bg-stone-800/60 text-stone-300 border-stone-600/50',
+  kegelbahn:     'bg-emerald-950/60 text-emerald-300 border-emerald-700/50',
   default:       'bg-forest-700 text-foreground border-border'
 }
 
 const variantLabels: Record<string, string> = {
   verein: 'Verein', privat: 'Privat',
   speisen: 'Speisen', getraenke: 'Getränke', uebernachtung: 'Übernachtung',
+  kegelbahn: 'Kegelbahn',
   lebensmittel: 'Lebensmittel', dekoration: 'Dekoration',
   anschaffung: 'Anschaffungen', sonstiges: 'Sonstiges'
 }

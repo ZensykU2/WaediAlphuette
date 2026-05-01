@@ -7,7 +7,8 @@ interface SaisonStore {
   activeSaisonId: number | null
   loadSaisons: () => Promise<void>
   setActive: (id: number) => Promise<void>
-  createSaison: (data: Omit<Saison, 'id' | 'is_active' | 'erstellt_am'>) => Promise<void>
+  createSaison: (data: Partial<Saison>) => Promise<void>
+  updateSaison: (id: number, data: Partial<Saison>) => Promise<void>
   deleteSaison: (id: number) => Promise<void>
 }
 
@@ -33,6 +34,10 @@ export const useSaisonStore = create<SaisonStore>()(
 
       createSaison: async (data) => {
         await window.api.createSaison(data)
+        await get().loadSaisons()
+      },
+      updateSaison: async (id, data) => {
+        await window.api.updateSaison(id, data)
         await get().loadSaisons()
       },
 
