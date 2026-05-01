@@ -32,6 +32,36 @@ export async function initDatabase(): Promise<void> {
   db.run('PRAGMA foreign_keys = ON')
   runMigrations()
   persist()
+
+  // Repair broken links
+  try {
+    db.run(`
+      UPDATE zimmer_belegung
+      SET einnahme_id = (
+        SELECT e.id
+        FROM einnahmen e
+        WHERE e.zimmer_belegung_id = zimmer_belegung.id
+        LIMIT 1
+      )
+      WHERE einnahme_id IS NULL
+    `)
+    persist()
+  } catch (e) {}
+
+  try {
+    db.run(`
+      UPDATE einnahmen
+      SET zimmer_belegung_id = (
+        SELECT zb.id
+        FROM zimmer_belegung zb
+        WHERE zb.einnahme_id = einnahmen.id
+        LIMIT 1
+      )
+      WHERE zimmer_belegung_id IS NULL
+        AND kategorie = 'uebernachtung'
+    `)
+    persist()
+  } catch (e) {}
 }
 
 function persist(): void {
@@ -55,13 +85,30 @@ function get<T = Record<string, any>>(sql: string, params: any[] = []): T | unde
 }
 
 function run(sql: string, params: any[] = []): void {
-  db.run(sql, params)
-  persist()
+  try {
+    db.run(sql, params)
+    persist()
+  } catch (e) {
+    console.error(`[DB] run failed: ${sql}`, e)
+    throw e
+  }
+}
+
+export function getAppSettings() {
+  const rows = all('SELECT * FROM app_settings')
+  const settings: Record<string, string> = {}
+  for (const r of rows) settings[r.key] = r.value
+  return settings
+}
+
+export function setAppSetting(key: string, value: string) {
+  run('INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', [key, value])
 }
 
 function lastId(): number {
   const res = db.exec('SELECT last_insert_rowid()')
-  return (res[0]?.values?.[0]?.[0] ?? 0) as number
+  const id = (res[0]?.values?.[0]?.[0] ?? 0) as number
+  return id
 }
 
 // ── Schema migrations ─────────────────────────────────────────────────────────
@@ -75,6 +122,8 @@ function runMigrations(): void {
       start_datum TEXT,
       end_datum   TEXT,
       is_active   INTEGER NOT NULL DEFAULT 0,
+      uebernachtung_preis REAL DEFAULT 35.0,
+      kegelbahn_split_privat REAL DEFAULT 0.18,
       erstellt_am TEXT    NOT NULL DEFAULT (datetime('now'))
     )
   `)
@@ -92,11 +141,13 @@ function runMigrations(): void {
       id            INTEGER PRIMARY KEY AUTOINCREMENT,
       saison_id     INTEGER NOT NULL REFERENCES saisons(id) ON DELETE CASCADE,
       datum         TEXT    NOT NULL,
-      kategorie     TEXT    NOT NULL CHECK(kategorie IN ('speisen','getraenke','uebernachtung')),
+      kategorie     TEXT    NOT NULL CHECK(kategorie IN ('speisen','getraenke','uebernachtung','kegelbahn')),
       brutto        REAL    NOT NULL DEFAULT 0,
       anteil_privat REAL    NOT NULL DEFAULT 0,
       anteil_verein REAL    NOT NULL DEFAULT 0,
       notiz         TEXT,
+      zimmer_belegung_id INTEGER,
+      anlass_id     INTEGER,
       erstellt_am   TEXT    NOT NULL DEFAULT (datetime('now'))
     )
   `)
@@ -188,7 +239,10 @@ function runMigrations(): void {
       aufgabe        TEXT    NOT NULL,
       schicht        TEXT,
       uebernachtung  INTEGER NOT NULL DEFAULT 0,
+      uebernachtung_von TEXT,
+      uebernachtung_bis TEXT,
       zimmer_id      INTEGER REFERENCES zimmer(id) ON DELETE SET NULL,
+      zimmer_belegung_id INTEGER,
       notiz          TEXT,
       erstellt_am    TEXT    NOT NULL DEFAULT (datetime('now'))
     )
@@ -198,7 +252,8 @@ function runMigrations(): void {
       id         INTEGER PRIMARY KEY AUTOINCREMENT,
       name       TEXT NOT NULL,
       typ        TEXT NOT NULL CHECK(typ IN ('6er','5er','4er','huettenwart')),
-      kapazitaet INTEGER NOT NULL DEFAULT 1
+      kapazitaet INTEGER NOT NULL DEFAULT 1,
+      UNIQUE(name)
     )
   `)
   db.run(`
@@ -210,6 +265,8 @@ function runMigrations(): void {
       datum_bis  TEXT NOT NULL,
       gast_name  TEXT NOT NULL,
       typ        TEXT NOT NULL CHECK(typ IN ('gast','helfer')),
+      betten     INTEGER NOT NULL DEFAULT 1,
+      einnahme_id INTEGER,
       notiz      TEXT,
       erstellt_am TEXT NOT NULL DEFAULT (datetime('now'))
     )
@@ -225,11 +282,100 @@ function runMigrations(): void {
       typ               TEXT    NOT NULL CHECK(typ IN ('verein','privat','sonstiges')) DEFAULT 'verein',
       kegelbahn         INTEGER NOT NULL DEFAULT 0,
       preis_pro_stunde  REAL,
+      stunden           REAL DEFAULT 2.0,
       notiz             TEXT,
       status            TEXT    NOT NULL CHECK(status IN ('geplant','bestaetigt','abgesagt')) DEFAULT 'geplant',
+      einnahme_id       INTEGER,
       erstellt_am       TEXT    NOT NULL DEFAULT (datetime('now'))
     )
   `)
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key   TEXT PRIMARY KEY,
+      value TEXT
+    )
+  `)
+
+  // 1.1.0 Migrations (Safe Add Column)
+  try { db.run('ALTER TABLE saisons ADD COLUMN uebernachtung_preis REAL DEFAULT 35.0') } catch(e) {}
+  try { db.run('ALTER TABLE saisons ADD COLUMN kegelbahn_split_privat REAL DEFAULT 0.18') } catch(e) {}
+  try { db.run('ALTER TABLE anlaesse ADD COLUMN stunden REAL DEFAULT 2.0') } catch(e) {}
+  try { db.run('ALTER TABLE anlaesse ADD COLUMN einnahme_id INTEGER') } catch(e) {}
+  try { db.run('ALTER TABLE einnahmen ADD COLUMN anlass_id INTEGER') } catch(e) {}
+  
+  // 1.1.0 Fix check constraint for einnahmen
+  try {
+    // Test insert to see if 'kegelbahn' is allowed
+    db.run("INSERT INTO einnahmen (saison_id, datum, kategorie, brutto) VALUES (0, '0000-00-00', 'kegelbahn', 0)")
+    db.run("DELETE FROM einnahmen WHERE kategorie = 'kegelbahn' AND datum = '0000-00-00'")
+  } catch (e) {
+    console.log('[DB] Einnahmen table check constraint outdated. Recreating table...')
+    db.run('BEGIN')
+    try {
+      db.run('ALTER TABLE einnahmen RENAME TO einnahmen_old')
+      db.run(`
+        CREATE TABLE einnahmen (
+          id            INTEGER PRIMARY KEY AUTOINCREMENT,
+          saison_id     INTEGER NOT NULL REFERENCES saisons(id) ON DELETE CASCADE,
+          datum         TEXT    NOT NULL,
+          kategorie     TEXT    NOT NULL CHECK(kategorie IN ('speisen','getraenke','uebernachtung','kegelbahn')),
+          brutto        REAL    NOT NULL DEFAULT 0,
+          anteil_privat REAL    NOT NULL DEFAULT 0,
+          anteil_verein REAL    NOT NULL DEFAULT 0,
+          notiz         TEXT,
+          zimmer_belegung_id INTEGER,
+          anlass_id     INTEGER,
+          erstellt_am   TEXT    NOT NULL DEFAULT (datetime('now'))
+        )
+      `)
+      db.run(`
+        INSERT INTO einnahmen (id, saison_id, datum, kategorie, brutto, anteil_privat, anteil_verein, notiz, zimmer_belegung_id, anlass_id, erstellt_am)
+        SELECT id, saison_id, datum, kategorie, brutto, anteil_privat, anteil_verein, notiz, zimmer_belegung_id, anlass_id, erstellt_am
+        FROM einnahmen_old
+      `)
+      db.run('DROP TABLE einnahmen_old')
+      db.run('COMMIT')
+    } catch (err) {
+      db.run('ROLLBACK')
+      console.error('[DB] Failed to recreate einnahmen table', err)
+    }
+  }
+
+  // 1.1.0 Fix check constraint for ausgaben
+  try {
+    // Test insert to see if 'getraenke' is allowed
+    db.run("INSERT INTO ausgaben (saison_id, datum, kategorie, betrag) VALUES (0, '0000-00-00', 'getraenke', 0)")
+    db.run("DELETE FROM ausgaben WHERE kategorie = 'getraenke' AND datum = '0000-00-00'")
+  } catch (e) {
+    console.log('[DB] Ausgaben table check constraint outdated. Recreating table...')
+    db.run('BEGIN')
+    try {
+      db.run('ALTER TABLE ausgaben RENAME TO ausgaben_old')
+      db.run(`
+        CREATE TABLE ausgaben (
+          id          INTEGER PRIMARY KEY AUTOINCREMENT,
+          saison_id   INTEGER NOT NULL REFERENCES saisons(id) ON DELETE CASCADE,
+          datum       TEXT    NOT NULL,
+          kategorie   TEXT    NOT NULL CHECK(kategorie IN ('lebensmittel', 'getraenke', 'dekoration', 'anschaffung', 'sonstiges')),
+          betrag      REAL    NOT NULL DEFAULT 0,
+          traeger     TEXT    NOT NULL CHECK(traeger IN ('privat', 'verein')) DEFAULT 'verein',
+          notiz       TEXT,
+          erstellt_am TEXT    NOT NULL DEFAULT (datetime('now'))
+        )
+      `)
+      db.run(`
+        INSERT INTO ausgaben (id, saison_id, datum, kategorie, betrag, traeger, notiz, erstellt_am)
+        SELECT id, saison_id, datum, kategorie, betrag, traeger, notiz, erstellt_am
+        FROM ausgaben_old
+      `)
+      db.run('DROP TABLE ausgaben_old')
+      db.run('COMMIT')
+    } catch (err) {
+      db.run('ROLLBACK')
+      console.error('[DB] Failed to recreate ausgaben table', err)
+    }
+  }
   db.run(`
     CREATE TABLE IF NOT EXISTS menue (
       id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -296,30 +442,59 @@ function runMigrations(): void {
     )
   `)
 
-  // Seed standard Zimmer (idempotent)
-  const zimmerCount = (get<any>('SELECT COUNT(*) as c FROM zimmer') ?? { c: 0 }).c
-  if (Number(zimmerCount) === 0) {
-    db.run(`INSERT INTO zimmer (name, typ, kapazitaet) VALUES
-      ('Zimmer 6er', '6er', 6),
-      ('Zimmer 5er', '5er', 5),
-      ('Zimmer 4er', '4er', 4),
-      ('Hüttenwartszimmer', 'huettenwart', 2)`)
+  // Robust zimmer cleanup and re-seeding
+  try {
+    const counts = all('SELECT name, COUNT(*) as count FROM zimmer GROUP BY name HAVING count > 1')
+    if (counts.length > 0) {
+      console.log('[DB] Found duplicate zimmer, cleaning up...')
+      db.run(`
+        DELETE FROM zimmer 
+        WHERE id NOT IN (
+          SELECT MIN(id) 
+          FROM zimmer 
+          GROUP BY name
+        )
+      `)
+      persist()
+    }
+    db.run('CREATE UNIQUE INDEX IF NOT EXISTS idx_zimmer_name ON zimmer(name)')
     persist()
+  } catch (e) {
+    console.error('[DB] Zimmer cleanup failed:', e)
   }
+
+  db.run(`INSERT OR IGNORE INTO zimmer (name, typ, kapazitaet) VALUES
+    ('Zimmer 6er', '6er', 6),
+    ('Zimmer 5er', '5er', 5),
+    ('Zimmer 4er', '4er', 4),
+    ('Hüttenwartszimmer', 'huettenwart', 2)`)
+  persist()
 
   // One-time migrations for existing DBs
   try {
      db.run('ALTER TABLE getraenke_stammdaten ADD COLUMN min_bestand INTEGER DEFAULT 0')
-  } catch (e) {
-     // Column already exists, ignore
-  }
+     persist()
+  } catch (e) {}
 
-  try { db.run('ALTER TABLE getraenke_abrechnung ADD COLUMN helfer_konsum INTEGER NOT NULL DEFAULT 0') } catch (e) {}
-  try { db.run('ALTER TABLE getraenke_abrechnung ADD COLUMN verbrauch_gast INTEGER NOT NULL DEFAULT 0') } catch (e) {}
+  try { db.run('ALTER TABLE getraenke_abrechnung ADD COLUMN helfer_konsum INTEGER NOT NULL DEFAULT 0'); persist(); } catch (e) {}
+  try { db.run('ALTER TABLE getraenke_abrechnung ADD COLUMN verbrauch_gast INTEGER NOT NULL DEFAULT 0'); persist(); } catch (e) {}
   try { 
     db.run('UPDATE getraenke_abrechnung SET helfer_konsum = arbeitstag_1 + arbeitstag_2 + arbeitstag_3 WHERE helfer_konsum = 0 AND (arbeitstag_1 > 0 OR arbeitstag_2 > 0 OR arbeitstag_3 > 0)')
     db.run('UPDATE getraenke_abrechnung SET verbrauch_gast = MAX(0, bestand_antritt + lieferungen - bestand_abgabe - eigenkonsum - helfer_konsum) WHERE verbrauch_gast = 0 AND (bestand_antritt > 0 OR lieferungen > 0)')
+    persist()
   } catch(e) {}
+
+  // Migration for beds in bookings
+  try {
+    db.run('ALTER TABLE zimmer_belegung ADD COLUMN betten INTEGER NOT NULL DEFAULT 1')
+    persist()
+  } catch (e) {}
+
+  try { db.run('ALTER TABLE einnahmen ADD COLUMN zimmer_belegung_id INTEGER'); persist(); } catch(e) {}
+  try { db.run('ALTER TABLE zimmer_belegung ADD COLUMN einnahme_id INTEGER'); persist(); } catch(e) {}
+  try { db.run('ALTER TABLE helfer_einsaetze ADD COLUMN uebernachtung_von TEXT'); persist(); } catch(e) {}
+  try { db.run('ALTER TABLE helfer_einsaetze ADD COLUMN uebernachtung_bis TEXT'); persist(); } catch(e) {}
+  try { db.run('ALTER TABLE helfer_einsaetze ADD COLUMN zimmer_belegung_id INTEGER'); persist(); } catch(e) {}
 }
 
 // ── Saisons ───────────────────────────────────────────────────────────────────
@@ -391,7 +566,7 @@ export function addEinnahme(entry: {
   kategorie: 'speisen' | 'getraenke' | 'uebernachtung'
   brutto: number; notiz?: string
 }) {
-  const { anteil_privat, anteil_verein } = calcAnteile(entry.kategorie, entry.brutto)
+  const { anteil_privat, anteil_verein } = calcAnteile(entry.kategorie as any, entry.brutto, entry.saison_id)
   run(
     'INSERT INTO einnahmen (saison_id,datum,kategorie,brutto,anteil_privat,anteil_verein,notiz) VALUES (?,?,?,?,?,?,?)',
     [entry.saison_id, entry.datum, entry.kategorie, entry.brutto, anteil_privat, anteil_verein, entry.notiz ?? null]
@@ -404,7 +579,7 @@ export function updateEinnahme(id: number, data: Record<string, any>) {
   if (!existing) return
   const kat = (data.kategorie ?? existing.kategorie) as 'speisen' | 'getraenke' | 'uebernachtung'
   const brutto = data.brutto ?? existing.brutto
-  const { anteil_privat, anteil_verein } = calcAnteile(kat, brutto)
+  const { anteil_privat, anteil_verein } = calcAnteile(kat as any, brutto, existing.saison_id)
   const merged = { ...data, anteil_privat, anteil_verein }
   const keys = Object.keys(merged)
   const set = keys.map(k => `${k} = ?`).join(', ')
@@ -412,6 +587,12 @@ export function updateEinnahme(id: number, data: Record<string, any>) {
 }
 
 export function deleteEinnahme(id: number) {
+  const ein = get<any>('SELECT * FROM einnahmen WHERE id = ?', [id])
+
+  if (ein?.zimmer_belegung_id) {
+    deleteZimmerBelegung(ein.zimmer_belegung_id, false)
+  }
+
   run('DELETE FROM einnahmen WHERE id = ?', [id])
 }
 
@@ -578,15 +759,19 @@ export function logImport(saisonId: number, dateiName: string, zeilenCount: numb
 // ── Business calculations ─────────────────────────────────────────────────────
 
 export function calcAnteile(
-  kategorie: 'speisen' | 'getraenke' | 'uebernachtung',
-  brutto: number
+  kategorie: 'speisen' | 'getraenke' | 'uebernachtung' | 'kegelbahn',
+  brutto: number,
+  saisonId: number
 ): { anteil_privat: number; anteil_verein: number } {
+  const saison = get<any>('SELECT * FROM saisons WHERE id = ?', [saisonId])
+  const splitPrivat = saison?.kegelbahn_split_privat ?? 0.18
+
   if (kategorie === 'speisen') {
     return { anteil_privat: brutto, anteil_verein: 0 }
-  } else if (kategorie === 'getraenke') {
+  } else if (kategorie === 'getraenke' || kategorie === 'kegelbahn') {
     return {
-      anteil_privat: Math.round(brutto * 0.18 * 100) / 100,
-      anteil_verein: Math.round(brutto * 0.82 * 100) / 100
+      anteil_privat: Math.round(brutto * splitPrivat * 100) / 100,
+      anteil_verein: Math.round(brutto * (1 - splitPrivat) * 100) / 100
     }
   } else {
     // uebernachtung
@@ -705,7 +890,7 @@ export function bookGetraenkeRevenue(saisonId: number, amount: number) {
   ) as any
 
   const today = new Date().toISOString().split('T')[0]
-  const { anteil_privat, anteil_verein } = calcAnteile('getraenke', amount)
+  const { anteil_privat, anteil_verein } = calcAnteile('getraenke', amount, saisonId)
 
   if (existing) {
     run(
@@ -846,34 +1031,82 @@ export function getEinsaetze(saisonId: number) {
 
 export function saveEinsatz(e: {
   id?: number; saison_id: number; helfer_id: number; datum: string;
-  aufgabe: string; schicht?: string; uebernachtung?: boolean; zimmer_id?: number; notiz?: string
+  aufgabe: string; schicht?: string; uebernachtung?: boolean; zimmer_id?: number; 
+  uebernachtung_von?: string; uebernachtung_bis?: string; notiz?: string; zimmer_belegung_id?: number
 }) {
   const ue = e.uebernachtung ? 1 : 0
+  const von = e.uebernachtung_von || e.datum
+  const bis = e.uebernachtung_bis || e.datum
+
+  let einsatzId = e.id
   if (e.id) {
-    run('UPDATE helfer_einsaetze SET saison_id=?,helfer_id=?,datum=?,aufgabe=?,schicht=?,uebernachtung=?,zimmer_id=?,notiz=? WHERE id=?',
-      [e.saison_id, e.helfer_id, e.datum, e.aufgabe, e.schicht ?? null, ue, e.zimmer_id ?? null, e.notiz ?? null, e.id])
-    return get('SELECT * FROM helfer_einsaetze WHERE id=?', [e.id])
+    run('UPDATE helfer_einsaetze SET saison_id=?,helfer_id=?,datum=?,aufgabe=?,schicht=?,uebernachtung=?,uebernachtung_von=?,uebernachtung_bis=?,zimmer_id=?,notiz=? WHERE id=?',
+      [e.saison_id ?? null, e.helfer_id ?? null, e.datum ?? null, e.aufgabe ?? null, e.schicht ?? null, ue, von ?? null, bis ?? null, e.zimmer_id ?? null, e.notiz ?? null, e.id])
+  } else {
+    run('INSERT INTO helfer_einsaetze (saison_id,helfer_id,datum,aufgabe,schicht,uebernachtung,uebernachtung_von,uebernachtung_bis,zimmer_id,notiz) VALUES (?,?,?,?,?,?,?,?,?,?)',
+      [e.saison_id ?? null, e.helfer_id ?? null, e.datum ?? null, e.aufgabe ?? null, e.schicht ?? null, ue, von ?? null, bis ?? null, e.zimmer_id ?? null, e.notiz ?? null])
+    einsatzId = lastId()
   }
-  run('INSERT INTO helfer_einsaetze (saison_id,helfer_id,datum,aufgabe,schicht,uebernachtung,zimmer_id,notiz) VALUES (?,?,?,?,?,?,?,?)',
-    [e.saison_id, e.helfer_id, e.datum, e.aufgabe, e.schicht ?? null, ue, e.zimmer_id ?? null, e.notiz ?? null])
-  return get('SELECT * FROM helfer_einsaetze WHERE id=?', [lastId()])
+
+  const einsatz = get<any>('SELECT * FROM helfer_einsaetze WHERE id=?', [einsatzId])
+  const helfer = get<any>('SELECT name FROM helfer WHERE id=?', [e.helfer_id])
+
+  if (!einsatz || !helfer) {
+    console.log('[DB] saveEinsatz: Missing einsatz or helfer', { einsatzId, helferId: e.helfer_id })
+    return get('SELECT * FROM helfer_einsaetze WHERE id=?', [einsatzId!])
+  }
+
+  // Sync ZimmerBelegung
+  if (einsatz.uebernachtung && einsatz.zimmer_id) {
+    const bookingData = {
+      id: einsatz.zimmer_belegung_id || undefined,
+      saison_id: einsatz.saison_id,
+      zimmer_id: einsatz.zimmer_id,
+      datum_von: einsatz.uebernachtung_von || von,
+      datum_bis: einsatz.uebernachtung_bis || bis,
+      gast_name: helfer.name,
+      typ: 'helfer' as const,
+      betten: 1,
+      notiz: `Einsatz: ${einsatz.aufgabe}`,
+      skipEinnahme: true
+    };
+    console.log('[DB] saveEinsatz: Syncing ZimmerBelegung', bookingData)
+    const booking = saveZimmerBelegung(bookingData);
+    if (booking && booking.id && !einsatz.zimmer_belegung_id) {
+      console.log('[DB] saveEinsatz: Linking new ZimmerBelegung', booking.id)
+      run('UPDATE helfer_einsaetze SET zimmer_belegung_id=? WHERE id=?', [booking.id, einsatzId]);
+    }
+  } else if (!einsatz.uebernachtung && einsatz.zimmer_belegung_id) {
+    console.log('[DB] saveEinsatz: Removing ZimmerBelegung', einsatz.zimmer_belegung_id)
+    deleteZimmerBelegung(einsatz.zimmer_belegung_id, true);
+    run('UPDATE helfer_einsaetze SET zimmer_belegung_id=NULL WHERE id=?', [einsatzId]);
+  }
+
+  const finalEinsatz = get('SELECT * FROM helfer_einsaetze WHERE id=?', [einsatzId!])
+  console.log('[DB] saveEinsatz finished', finalEinsatz)
+  return finalEinsatz
 }
 
 export function deleteEinsatz(id: number) {
+  const einsatz = get<any>('SELECT * FROM helfer_einsaetze WHERE id=?', [id])
+  if (einsatz && einsatz.zimmer_belegung_id) {
+    deleteZimmerBelegung(einsatz.zimmer_belegung_id, true)
+  }
   run('DELETE FROM helfer_einsaetze WHERE id=?', [id])
 }
 
 // ── Zimmer ────────────────────────────────────────────────────────────────────
 
 export function getAllZimmer() {
-  return all('SELECT * FROM zimmer ORDER BY typ, name')
+  // Hard enforcement of unique names via GROUP BY
+  return all('SELECT * FROM zimmer GROUP BY name ORDER BY typ, name')
 }
 
 export function getZimmerBelegung(saisonId: number) {
   return all(
     `SELECT b.*, z.name AS zimmer_name, z.typ AS zimmer_typ, z.kapazitaet
      FROM zimmer_belegung b
-     JOIN zimmer z ON b.zimmer_id = z.id
+     LEFT JOIN zimmer z ON b.zimmer_id = z.id
      WHERE b.saison_id = ?
      ORDER BY b.datum_von ASC`,
     [saisonId]
@@ -882,20 +1115,153 @@ export function getZimmerBelegung(saisonId: number) {
 
 export function saveZimmerBelegung(b: {
   id?: number; saison_id: number; zimmer_id: number;
-  datum_von: string; datum_bis: string; gast_name: string; typ: 'gast' | 'helfer'; notiz?: string
+  datum_von: string; datum_bis: string; gast_name: string; typ: 'gast' | 'helfer'; betten: number; notiz?: string;
+  skipEinnahme?: boolean;
 }) {
-  if (b.id) {
-    run('UPDATE zimmer_belegung SET saison_id=?,zimmer_id=?,datum_von=?,datum_bis=?,gast_name=?,typ=?,notiz=? WHERE id=?',
-      [b.saison_id, b.zimmer_id, b.datum_von, b.datum_bis, b.gast_name, b.typ, b.notiz ?? null, b.id])
-    return get('SELECT * FROM zimmer_belegung WHERE id=?', [b.id])
+  db.run('BEGIN')
+  try {
+    let bookingId = b.id
+    const isEdit = b.id !== undefined && b.id !== null
+    const saison = get<any>('SELECT * FROM saisons WHERE id=?', [b.saison_id])
+    const preisProBett = saison?.uebernachtung_preis || 35.0
+
+    if (isEdit) {
+      db.run(
+        'UPDATE zimmer_belegung SET saison_id=?,zimmer_id=?,datum_von=?,datum_bis=?,gast_name=?,typ=?,betten=?,notiz=? WHERE id=?',
+        [
+          b.saison_id ?? null,
+          b.zimmer_id ?? null,
+          b.datum_von ?? null,
+          b.datum_bis ?? null,
+          b.gast_name ?? null,
+          b.typ ?? null,
+          b.betten ?? 1,
+          b.notiz ?? null,
+          b.id!
+        ]
+      )
+    } else {
+      db.run(
+        'INSERT INTO zimmer_belegung (saison_id,zimmer_id,datum_von,datum_bis,gast_name,typ,betten,notiz) VALUES (?,?,?,?,?,?,?,?)',
+        [
+          b.saison_id ?? null,
+          b.zimmer_id ?? null,
+          b.datum_von ?? null,
+          b.datum_bis ?? null,
+          b.gast_name ?? null,
+          b.typ ?? null,
+          b.betten ?? 1,
+          b.notiz ?? null
+        ]
+      )
+      bookingId = lastId()
+    }
+
+    let booking = get<any>('SELECT * FROM zimmer_belegung WHERE id=?', [bookingId!])
+    if (!booking) {
+      db.run('ROLLBACK')
+      console.error('[DB] saveZimmerBelegung: Could not fetch booking')
+      return undefined
+    }
+
+    if (booking.typ === 'gast' && !b.skipEinnahme) {
+      const start = new Date(booking.datum_von)
+      const end = new Date(booking.datum_bis)
+      const diffTime = end.getTime() - start.getTime()
+      const nights = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)))
+      const brutto = preisProBett * (booking.betten || 1) * nights
+      const { anteil_privat, anteil_verein } = calcAnteile('uebernachtung', brutto, booking.saison_id)
+
+      let linkedEinnahme = get<any>(
+        'SELECT * FROM einnahmen WHERE zimmer_belegung_id = ? LIMIT 1',
+        [bookingId!]
+      )
+
+      if (!linkedEinnahme && booking.einnahme_id) {
+        linkedEinnahme = get<any>('SELECT * FROM einnahmen WHERE id = ?', [
+          booking.einnahme_id
+        ])
+      }
+
+      const notiz = `Buchung: ${booking.gast_name} (${nights} Nächte)`
+
+      if (linkedEinnahme) {
+        db.run(
+          'UPDATE einnahmen SET saison_id=?, datum=?, kategorie=?, brutto=?, anteil_privat=?, anteil_verein=?, notiz=?, zimmer_belegung_id=? WHERE id=?',
+          [
+            booking.saison_id,
+            booking.datum_von,
+            'uebernachtung',
+            brutto,
+            anteil_privat,
+            anteil_verein,
+            notiz,
+            bookingId!,
+            linkedEinnahme.id
+          ]
+        )
+
+        db.run('UPDATE zimmer_belegung SET einnahme_id=? WHERE id=?', [
+          linkedEinnahme.id,
+          bookingId!
+        ])
+      } else {
+        db.run(
+          'INSERT INTO einnahmen (saison_id, datum, kategorie, brutto, anteil_privat, anteil_verein, notiz, zimmer_belegung_id) VALUES (?,?,?,?,?,?,?,?)',
+          [
+            booking.saison_id,
+            booking.datum_von,
+            'uebernachtung',
+            brutto,
+            anteil_privat,
+            anteil_verein,
+            notiz,
+            bookingId!
+          ]
+        )
+
+        const newEinnahmeId = lastId()
+        db.run('UPDATE zimmer_belegung SET einnahme_id=? WHERE id=?', [
+          newEinnahmeId,
+          bookingId!
+        ])
+      }
+    } else {
+      const linkedEinnahme = get<any>(
+        'SELECT id FROM einnahmen WHERE zimmer_belegung_id = ? LIMIT 1',
+        [bookingId!]
+      )
+
+      if (linkedEinnahme) {
+        db.run('DELETE FROM einnahmen WHERE id=?', [linkedEinnahme.id])
+      }
+
+      db.run('UPDATE zimmer_belegung SET einnahme_id=NULL WHERE id=?', [
+        bookingId!
+      ])
+    }
+
+    db.run('COMMIT')
+    persist()
+
+    booking = get<any>('SELECT * FROM zimmer_belegung WHERE id=?', [bookingId])
+    console.log('[DB] saveZimmerBelegung finished', booking)
+    return booking
+  } catch (e) {
+    db.run('ROLLBACK')
+    console.error('[DB] saveZimmerBelegung failed', e)
+    throw e
   }
-  run('INSERT INTO zimmer_belegung (saison_id,zimmer_id,datum_von,datum_bis,gast_name,typ,notiz) VALUES (?,?,?,?,?,?,?)',
-    [b.saison_id, b.zimmer_id, b.datum_von, b.datum_bis, b.gast_name, b.typ, b.notiz ?? null])
-  return get('SELECT * FROM zimmer_belegung WHERE id=?', [lastId()])
 }
 
-export function deleteZimmerBelegung(id: number) {
-  run('DELETE FROM zimmer_belegung WHERE id=?', [id])
+export function deleteZimmerBelegung(id: number, deleteEinnahmeEntry: boolean = false) {
+  const booking = get<any>('SELECT * FROM zimmer_belegung WHERE id=?', [id])
+  const linkedEinnahme = get<any>('SELECT id FROM einnahmen WHERE zimmer_belegung_id = ? LIMIT 1', [id])
+
+  if (deleteEinnahmeEntry && linkedEinnahme) {
+    run('DELETE FROM einnahmen WHERE id=?', [linkedEinnahme.id])
+  }
+  run('DELETE FROM zimmer_belegung WHERE id=?', [id]);
 }
 
 // ── Anlässe ───────────────────────────────────────────────────────────────────
@@ -907,23 +1273,102 @@ export function getAnlaesse(saisonId: number) {
 export function saveAnlass(a: {
   id?: number; saison_id: number; datum: string; gruppe: string;
   personenzahl_min: number; personenzahl_max?: number; typ: string;
-  kegelbahn?: boolean; preis_pro_stunde?: number; notiz?: string;
-  status?: string
+  kegelbahn?: boolean; preis_pro_stunde?: number; stunden?: number;
+  notiz?: string; status?: string
 }) {
-  const kb = a.kegelbahn ? 1 : 0
-  const status = a.status ?? 'geplant'
-  if (a.id) {
-    run('UPDATE anlaesse SET saison_id=?,datum=?,gruppe=?,personenzahl_min=?,personenzahl_max=?,typ=?,kegelbahn=?,preis_pro_stunde=?,notiz=?,status=? WHERE id=?',
-      [a.saison_id, a.datum, a.gruppe, a.personenzahl_min, a.personenzahl_max ?? null, a.typ, kb, a.preis_pro_stunde ?? null, a.notiz ?? null, status, a.id])
-    return get('SELECT * FROM anlaesse WHERE id=?', [a.id])
+  db.run('BEGIN')
+  try {
+    const kb = a.kegelbahn ? 1 : 0
+    const stunden = a.stunden ?? 2.0
+    const status = a.status ?? 'geplant'
+    let anlassId = a.id
+
+    if (a.id) {
+      db.run('UPDATE anlaesse SET saison_id=?,datum=?,gruppe=?,personenzahl_min=?,personenzahl_max=?,typ=?,kegelbahn=?,preis_pro_stunde=?,stunden=?,notiz=?,status=? WHERE id=?',
+        [a.saison_id, a.datum, a.gruppe, a.personenzahl_min, a.personenzahl_max ?? null, a.typ, kb, a.preis_pro_stunde ?? null, stunden, a.notiz ?? null, status, a.id])
+    } else {
+      db.run('INSERT INTO anlaesse (saison_id,datum,gruppe,personenzahl_min,personenzahl_max,typ,kegelbahn,preis_pro_stunde,stunden,notiz,status) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+        [a.saison_id, a.datum, a.gruppe, a.personenzahl_min, a.personenzahl_max ?? null, a.typ, kb, a.preis_pro_stunde ?? null, stunden, a.notiz ?? null, status])
+      anlassId = lastId()
+    }
+
+    const anlass = get<any>('SELECT * FROM anlaesse WHERE id=?', [anlassId!])
+    const saison = get<any>('SELECT * FROM saisons WHERE id=?', [a.saison_id])
+
+    // Sync Kegelbahn Revenue
+    if (anlass.kegelbahn && anlass.status === 'bestaetigt') {
+      const brutto = (anlass.preis_pro_stunde || 0) * (anlass.stunden || 0)
+      const splitPrivat = saison?.kegelbahn_split_privat ?? 0.18
+      const privat = brutto * splitPrivat
+      const verein = brutto - privat
+
+      if (anlass.einnahme_id) {
+        db.run('UPDATE einnahmen SET datum=?, brutto=?, anteil_privat=?, anteil_verein=?, notiz=? WHERE id=?',
+          [anlass.datum, brutto, privat, verein, `Kegelbahn: ${anlass.gruppe}`, anlass.einnahme_id])
+      } else {
+        db.run('INSERT INTO einnahmen (saison_id, datum, kategorie, brutto, anteil_privat, anteil_verein, notiz, anlass_id) VALUES (?,?,?,?,?,?,?,?)',
+          [anlass.saison_id, anlass.datum, 'kegelbahn', brutto, privat, verein, `Kegelbahn: ${anlass.gruppe}`, anlassId!])
+        const einnahmeId = lastId()
+        db.run('UPDATE anlaesse SET einnahme_id=? WHERE id=?', [einnahmeId, anlassId!])
+      }
+    } else if (anlass.einnahme_id) {
+      // Remove or cancel revenue if planned or cancelled
+      db.run('DELETE FROM einnahmen WHERE id=?', [anlass.einnahme_id])
+      db.run('UPDATE anlaesse SET einnahme_id=NULL WHERE id=?', [anlassId!])
+    }
+
+    db.run('COMMIT')
+    persist()
+    return get('SELECT * FROM anlaesse WHERE id=?', [anlassId!])
+  } catch (e) {
+    db.run('ROLLBACK')
+    throw e
   }
-  run('INSERT INTO anlaesse (saison_id,datum,gruppe,personenzahl_min,personenzahl_max,typ,kegelbahn,preis_pro_stunde,notiz,status) VALUES (?,?,?,?,?,?,?,?,?,?)',
-    [a.saison_id, a.datum, a.gruppe, a.personenzahl_min, a.personenzahl_max ?? null, a.typ, kb, a.preis_pro_stunde ?? null, a.notiz ?? null, status])
-  return get('SELECT * FROM anlaesse WHERE id=?', [lastId()])
 }
 
 export function deleteAnlass(id: number) {
+  const anlass = get<any>('SELECT * FROM anlaesse WHERE id=?', [id])
+  if (anlass && anlass.einnahme_id) {
+    run('DELETE FROM einnahmen WHERE id=?', [anlass.einnahme_id])
+  }
   run('DELETE FROM anlaesse WHERE id=?', [id])
+}
+
+export function syncEinkaufToAusgaben(saisonId: number, data: { foodAmount?: number, drinksAmount?: number } = {}) {
+  const items = all('SELECT * FROM einkaufsliste WHERE saison_id=? AND besorgt=1', [saisonId])
+  if (!items.length) return 0
+
+  const foodItems = items.filter(i => i.kategorie === 'lebensmittel')
+  const drinkItems = items.filter(i => i.kategorie === 'getraenke')
+  const otherItems = items.filter(i => i.kategorie !== 'lebensmittel' && i.kategorie !== 'getraenke')
+
+  const today = new Date().toISOString().split('T')[0]
+  
+  db.run('BEGIN')
+  try {
+    // 1. Food Expense (Privat)
+    if (data.foodAmount && data.foodAmount > 0) {
+      const names = [...foodItems, ...otherItems].map(i => `${i.artikel} (${i.menge || ''}${i.einheit || ''})`).join(', ')
+      const note = `Einkauf (Speisen/Sonstiges): ${names}`
+      db.run('INSERT INTO ausgaben (saison_id, datum, kategorie, betrag, traeger, notiz) VALUES (?,?,?,?,?,?)',
+        [saisonId, today, 'lebensmittel', data.foodAmount, 'privat', note])
+    }
+
+    // 2. Drinks Expense (Verein)
+    if (data.drinksAmount && data.drinksAmount > 0) {
+      const names = drinkItems.map(i => `${i.artikel} (${i.menge || ''}${i.einheit || ''})`).join(', ')
+      const note = `Einkauf (Getränke): ${names}`
+      db.run('INSERT INTO ausgaben (saison_id, datum, kategorie, betrag, traeger, notiz) VALUES (?,?,?,?,?,?)',
+        [saisonId, today, 'getraenke', data.drinksAmount, 'verein', note])
+    }
+    
+    db.run('COMMIT')
+    persist()
+    return items.length
+  } catch (e) {
+    db.run('ROLLBACK')
+    throw e
+  }
 }
 
 // ── Menü ──────────────────────────────────────────────────────────────────────
@@ -936,6 +1381,10 @@ export function saveMenue(saisonId: number, pfad: string) {
   run('INSERT INTO menue (saison_id, pfad) VALUES (?,?) ON CONFLICT(saison_id) DO UPDATE SET pfad=excluded.pfad, hochgeladen_am=datetime(\'now\')',
     [saisonId, pfad])
   return get('SELECT * FROM menue WHERE saison_id=?', [saisonId])
+}
+
+export function deleteMenue(saisonId: number) {
+  run('DELETE FROM menue WHERE saison_id=?', [saisonId])
 }
 
 // ── Einkaufsliste ─────────────────────────────────────────────────────────────
@@ -966,6 +1415,10 @@ export function toggleEinkaufsitemBesorgt(id: number) {
 
 export function deleteEinkaufsitem(id: number) {
   run('DELETE FROM einkaufsliste WHERE id=?', [id])
+}
+
+export function deleteCheckedEinkauf(saisonId: number) {
+  run('DELETE FROM einkaufsliste WHERE saison_id=? AND besorgt=1', [saisonId])
 }
 
 // ── Rezepte ───────────────────────────────────────────────────────────────────
